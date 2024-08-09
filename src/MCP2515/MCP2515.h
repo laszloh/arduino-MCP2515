@@ -22,6 +22,8 @@
 #include <Arduino.h>
 #include <SPI.h>
 
+#include "ErrorCodes.hpp"
+
 // According to VS there is a "OVERFLOW" macro defined in corecrt_math.h
 #undef OVERFLOW
 
@@ -65,19 +67,6 @@ enum MCP2515_CAN_RXF {
     RXF5 = 5
 };
 
-enum MCP2515_ERRORCODES {
-    OK = 0,
-    PERM = -1,
-    NOENT = -2,
-    INTR = -4,
-    BADF = -9,
-    AGAIN = -11,
-    BUSY = -16,
-    INVAL = -22,
-    COMM = -70,
-    OVERFLOW = -75
-};
-
 enum MCP2515_MODES {
     NORMAL = 0,
     LOOPBACK = 1,
@@ -118,28 +107,28 @@ public:
     void setSPIFrequency(uint32_t frequency);
     void setClockFrequency(long clockFrequency);
 
-    int setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask);
-    int setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter);
+    MCP2515Error setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask);
+    MCP2515Error setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter);
 
     int getMode();
-    int setConfigMode();
-    int setListenMode(bool allowInvalidPackets = false);
-    int setLoopbackMode();
-    int setSleepMode();
-    int setNormalMode();
+    MCP2515Error setConfigMode();
+    MCP2515Error setListenMode(bool allowInvalidPackets = false);
+    MCP2515Error setLoopbackMode();
+    MCP2515Error setSleepMode();
+    MCP2515Error setNormalMode();
 
-    int setWakeupFilter(bool enable);
-    int setOneShotMode(bool enable);
+    MCP2515Error setWakeupFilter(bool enable);
+    MCP2515Error setOneShotMode(bool enable);
 
-    int receivePacket(CANPacket* packet);
+    MCP2515Error receivePacket(CANPacket* packet);
     void onReceivePacket(void(*callback)(CANPacket*));
 
     size_t getTxQueueLength();
     void processTxQueue();
 
-    int writePacket(CANPacket* packet, bool nowait = false);
-    int abortPacket(CANPacket* packet, bool nowait = false);
-    int waitForPacketStatus(CANPacket* packet, unsigned long status, bool nowait = false, unsigned long timeout = 0);
+    MCP2515Error writePacket(CANPacket* packet, bool nowait = false);
+    MCP2515Error abortPacket(CANPacket* packet, bool nowait = false);
+    MCP2515Error waitForPacketStatus(CANPacket* packet, unsigned long status, bool nowait = false, unsigned long timeout = 0);
 
     static void onInterrupt();
     void _handleInterruptPacket();
@@ -150,7 +139,7 @@ private:
     void modifyRegister(uint8_t address, uint8_t mask, uint8_t value);
     void writeRegister(uint8_t address, uint8_t value);
 
-    int handleMessageTransmit(CANPacket* packet, int n, bool cond);
+    MCP2515Error handleMessageTransmit(CANPacket* packet, int n, bool cond);
 
     bool getCnfForClockFrequency8e6(long baudRate, _mcp_cnf_frequency* cnf);
     bool getCnfForClockFrequency16e6(long baudRate, _mcp_cnf_frequency* cnf);
