@@ -171,7 +171,7 @@ MCP2515::~MCP2515() {
 #endif
 }
 
-int MCP2515::begin(long baudRate) {
+int MCP2515::begin(MCP2515_CAN_SPEED baudRate) {
     pinMode(_csPin, OUTPUT);
 
     SPI.begin();
@@ -182,21 +182,10 @@ int MCP2515::begin(long baudRate) {
         return MCP2515Error::BADF;
     }
 
-    _mcp_cnf_frequency cnf;
-    bool cnf_valid = false;
+    _mcp_cnf_frequency cnf = getCnfForClockFrequency(_clockFrequency, baudRate);
 
-    switch (_clockFrequency) {
-        case (long)8e6:
-            cnf_valid = getCnfForClockFrequency8e6(baudRate, &cnf);
-            break;
-        case (long)16e6:
-            cnf_valid = getCnfForClockFrequency16e6(baudRate, &cnf);
-            break;
-    };
-
-    if (!cnf_valid) {
+    if (!cnf)
         return MCP2515Error::INVAL;
-    }
 
     writeRegister(REG_CNF1, cnf.one);
     writeRegister(REG_CNF2, cnf.two);
@@ -238,7 +227,7 @@ void MCP2515::setSPIFrequency(uint32_t frequency) {
     _spiSettings = SPISettings(frequency, MSBFIRST, SPI_MODE0);
 }
 
-void MCP2515::setClockFrequency(long clockFrequency) {
+void MCP2515::setClockFrequency(MCP2515_CAN_CLOCK clockFrequency) {
     _clockFrequency = clockFrequency;
 }
 
@@ -774,138 +763,45 @@ MCP2515Error MCP2515::handleMessageTransmit(CANPacket* packet, int n, bool cond)
     return status;
 }
 
-bool MCP2515::getCnfForClockFrequency8e6(long baudRate, _mcp_cnf_frequency* cnf) {
-    switch (baudRate) {
-        case (long)1000e3:
-            (*cnf).one = 0x00;
-            (*cnf).two = 0x80;
-            (*cnf).three = 0x00;
-            return true;
-        case (long)500e3:
-            (*cnf).one = 0x00;
-            (*cnf).two = 0x90;
-            (*cnf).three = 0x02;
-            return true;
-        case (long)250e3:
-            (*cnf).one = 0x00;
-            (*cnf).two = 0xB1;
-            (*cnf).three = 0x05;
-            return true;
-        case (long)200e3:
-            (*cnf).one = 0x00;
-            (*cnf).two = 0xB4;
-            (*cnf).three = 0x06;
-            return true;
-        case (long)125e3:
-            (*cnf).one = 0x01;
-            (*cnf).two = 0xB1;
-            (*cnf).three = 0x05;
-            return true;
-        case (long)100e3:
-            (*cnf).one = 0x01;
-            (*cnf).two = 0xB4;
-            (*cnf).three = 0x06;
-            return true;
-        case (long)80e3:
-            (*cnf).one = 0x01;
-            (*cnf).two = 0xBF;
-            (*cnf).three = 0x07;
-            return true;
-        case (long)50e3:
-            (*cnf).one = 0x03;
-            (*cnf).two = 0xB4;
-            (*cnf).three = 0x06;
-            return true;
-        case (long)40e3:
-            (*cnf).one = 0x03;
-            (*cnf).two = 0xBF;
-            (*cnf).three = 0x07;
-            return true;
-        case (long)20e3:
-            (*cnf).one = 0x07;
-            (*cnf).two = 0xBF;
-            (*cnf).three = 0x07;
-            return true;
-        case (long)10e3:
-            (*cnf).one = 0x0F;
-            (*cnf).two = 0xBF;
-            (*cnf).three = 0x07;
-            return true;
-        case (long)5e3:
-            (*cnf).one = 0x1F;
-            (*cnf).two = 0xBF;
-            (*cnf).three = 0x07;
-            return true;
-    };
+template<typename T, size_t row, size_t col> 
+using array2d = std::array<std::array<T, col> row>;
 
-    return false;
-}
+_mcp_cnf_frequency MCP2515::getCnfForClockFrequency(MCP2515_CAN_CLOCK clock, MCP2515_CAN_SPEED baudRate) {
 
-bool MCP2515::getCnfForClockFrequency16e6(long baudRate, _mcp_cnf_frequency* cnf) {
-    switch (baudRate) {
-        case (long)1000e3:
-            (*cnf).one = 0x00;
-            (*cnf).two = 0xD0;
-            (*cnf).three = 0x82;
-            return true;
-        case (long)500e3:
-            (*cnf).one = 0x00;
-            (*cnf).two = 0xF0;
-            (*cnf).three = 0x86;
-            return true;
-        case (long)250e3:
-            (*cnf).one = 0x41;
-            (*cnf).two = 0xF1;
-            (*cnf).three = 0x85;
-            return true;
-        case (long)200e3:
-            (*cnf).one = 0x01;
-            (*cnf).two = 0xFA;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)125e3:
-            (*cnf).one = 0x03;
-            (*cnf).two = 0xF0;
-            (*cnf).three = 0x86;
-            return true;
-        case (long)100e3:
-            (*cnf).one = 0x03;
-            (*cnf).two = 0xFA;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)80e3:
-            (*cnf).one = 0x03;
-            (*cnf).two = 0xFF;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)50e3:
-            (*cnf).one = 0x07;
-            (*cnf).two = 0xFA;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)40e3:
-            (*cnf).one = 0x07;
-            (*cnf).two = 0xFF;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)20e3:
-            (*cnf).one = 0x0F;
-            (*cnf).two = 0xFF;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)10e3:
-            (*cnf).one = 0x1F;
-            (*cnf).two = 0xFF;
-            (*cnf).three = 0x87;
-            return true;
-        case (long)5e3:
-            (*cnf).one = 0x3F;
-            (*cnf).two = 0xFF;
-            (*cnf).three = 0x87;
-            return true;
-    }
+    const array2d<_mcp_cnf_frequency, 2, MCP2515_CAN_SPEED::_max> configs = {{
+        { // 8MHz
+            {0x00, 0x80, 0x00},     // CAN_1000KBPS
+            {0x00, 0x90, 0x02},     // CAN_500KBPS
+            {0x00, 0xB1, 0x05},     // CAN_250KBPS
+            {0x00, 0xB4, 0x06},     // CAN_200KBPS
+            {0x01, 0xB1, 0x05},     // CAN_125KBPS
+            {0x01, 0xB4, 0x06},     // CAN_100KBPS
+            {0x01, 0xBF, 0x07},     // CAN_80KBPS
+            {0x03, 0xB4, 0x06},     // CAN_50KBPS
+            {0x03, 0xBF, 0x07},     // CAN_40KBPS
+            {0x07, 0xBF, 0x07},     // CAN_20KBPS
+            {0x0F, 0xBF, 0x07},     // CAN_10KBPS
+            {0x1F, 0xBF, 0x07},     // CAN_5KBPS
+        },
+        { // 16 MHz
+            {0x00, 0xD0, 0x82},     // CAN_1000KBPS
+            {0x00, 0xF0, 0x86},     // CAN_500KBPS
+            {0x41, 0xF1, 0x85},     // CAN_250KBPS
+            {0x01, 0xFA, 0x87},     // CAN_200KBPS
+            {0x03, 0xF0, 0x86},     // CAN_125KBPS
+            {0x03, 0xFA, 0x87},     // CAN_100KBPS
+            {0x03, 0xFF, 0x87},     // CAN_80KBPS
+            {0x07, 0xFA, 0x87},     // CAN_50KBPS
+            {0x07, 0xFF, 0x87},     // CAN_40KBPS
+            {0x0F, 0xFF, 0x87},     // CAN_20KBPS
+            {0x1F, 0xFF, 0x87},     // CAN_10KBPS
+            {0x3F, 0xFF, 0x87},     // CAN_5KBPS
+        }
+    }};
 
-    return false;
+    if (baudRate > MCP2515_CAN_SPEED::MCP_SPEED_max || clock > MCP2515_CAN_CLOCK::MCP_CLOCK_max)
+        return {};
+    return configs[clock][baudRate];
 }
 
 void MCP2515::onInterrupt() {

@@ -33,26 +33,6 @@
 # undef __MCP2515_MULTI_INTERRUPTS_ENABLE__
 #endif
 
-enum MCP2515_CAN_CLOCK {
-    MCP_8MHZ = (long)8e6,
-    MCP_16MHZ = (long)16e6
-};
-
-enum MCP2515_CAN_SPEED {
-    CAN_5KBPS = (long)5e3,
-    CAN_10KBPS = (long)10e3,
-    CAN_20KBPS = (long)20e3,
-    CAN_40KBPS = (long)40e3,
-    CAN_50KBPS = (long)50e3,
-    CAN_80KBPS = (long)80e3,
-    CAN_100KBPS = (long)100e3,
-    CAN_125KBPS = (long)125e3,
-    CAN_200KBPS = (long)200e3,
-    CAN_250KBPS = (long)250e3,
-    CAN_500KBPS = (long)500e3,
-    CAN_1000KBPS = (long)1000e3
-};
-
 enum MCP2515_CAN_MASK {
     MASK0 = 0,
     MASK1 = 1
@@ -85,19 +65,37 @@ class CANPacket;
 #define MCP2515_DEFAULT_CS_PIN  10
 #define MCP2515_DEFAULT_INT_PIN 2
 
-struct _mcp_cnf_frequency {
-    uint8_t one;
-    uint8_t two;
-    uint8_t three;
-};
-
 class MCP2515 {
+public:
+    enum MCP2515_CAN_SPEED {
+        CAN_1000KBPS = 0,
+        CAN_500KBPS,
+        CAN_250KBPS,
+        CAN_200KBPS,
+        CAN_125KBPS,
+        CAN_100KBPS,
+        CAN_80KBPS,
+        CAN_50KBPS,
+        CAN_40KBPS,
+        CAN_20KBPS,
+        CAN_10KBPS,
+        CAN_5KBPS,
+
+        MCP_SPEED_max
+    };
+
+    enum MCP2515_CAN_CLOCK {
+        MCP_8MHZ = 0,
+        MCP_16MHZ,
+
+        MCP_CLOCK_max
+    };
 
 public:
-    MCP2515();
+    MCP2515(SPIClass &spi = SPI, MCP2515_CAN_CLOCK clk = MCP2515_CAN_CLOCK::MCP_8MHZ);
     ~MCP2515();
 
-    int begin(long baudRate);
+    int begin(MCP2515_CAN_SPEED baudRate);
     void end();
 
     uint8_t getStatus();
@@ -105,7 +103,7 @@ public:
 
     void setPins(int cs = MCP2515_DEFAULT_CS_PIN, int irq = MCP2515_DEFAULT_INT_PIN);
     void setSPIFrequency(uint32_t frequency);
-    void setClockFrequency(long clockFrequency);
+    void setClockFrequency(MCP2515_CAN_CLOCK clockFrequency);
 
     MCP2515Error setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask);
     MCP2515Error setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter);
@@ -132,7 +130,9 @@ public:
 
     static void onInterrupt();
     void _handleInterruptPacket();
+
 private:
+
     void reset();
 
     uint8_t readRegister(uint8_t address);
@@ -141,14 +141,29 @@ private:
 
     MCP2515Error handleMessageTransmit(CANPacket* packet, int n, bool cond);
 
-    bool getCnfForClockFrequency8e6(long baudRate, _mcp_cnf_frequency* cnf);
-    bool getCnfForClockFrequency16e6(long baudRate, _mcp_cnf_frequency* cnf);
+    struct _mcp_cnf_frequency {
+        uint8_t one{0x00};
+        uint8_t two{0x00};
+        uint8_t three{0x00};
 
-private:
+        constexpr _mcp_cnf_frequency() = default;
+        constexpr _mcp_cnf_frequency(uint8_t one, uint8_t two, uint8_t three) : one(one), two(two), three(three) {}
+
+        constexpr _mcp_cnf_frequency(const _mcp_cnf_frequency &l) {
+            this->one = l.one;
+            this->two = l.two;
+            this->three = l.three;
+        }
+    };
+
+    static constexpr _mcp_cnf_frequency getCnfForClockFrequency(MCP2515_CAN_CLOCK clock, MCP2515_CAN_SPEED baudRate, _mcp_cnf_frequency& cnf);
+    static constexpr bool getCnfForClockFrequency16e6(MCP2515_CAN_SPEED baudRate, _mcp_cnf_frequency& cnf);
+
     int _csPin;
     int _intPin;
-    long _clockFrequency;
+    MCP2515_CAN_CLOCK _clockFrequency;
     SPISettings _spiSettings;
+    SPIClass &spi;
 
     void (*_onReceivePacket)(CANPacket*);
 
