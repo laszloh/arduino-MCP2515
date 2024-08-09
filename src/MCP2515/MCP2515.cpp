@@ -7,7 +7,7 @@
 
 #include "MCP2515.h"
 #include "CANPacket.h"
-#include "Utilities.cpp"
+#include "Utilities.hpp"
 
 #define TX_BUFFER_NUM 0
 

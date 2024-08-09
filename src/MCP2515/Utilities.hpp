@@ -5,6 +5,8 @@
  * Licensed under Apache 2.0
  */
 
+#pragma once
+
 #include "CANPacket.h"
 
 static inline __attribute__((always_inline))
