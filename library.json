@@ -1,0 +1,28 @@
+{
+    "name": "MCP2515-nb",
+    "version": "0.1.0",
+    "description": "Arduino library for MCP2515 with non-blocking support.",
+    "keywords": "",
+    "repository":
+    {
+        "type": "git",
+        "url": "https://github.com/laszloh/arduino-MCP2515-nb.git"
+    },
+    "authors":
+    [
+        {
+        "name": "WitchCraftWorks Team",
+        "url": "https://github.com/WitchCraftWorks"
+        },
+        {
+        "name": "Laszlo Hegedüs",
+        "maintainer": true
+        }
+    ],
+    "license": " Apache-2.0",
+    "dependencies": {
+        "ciband/avr_stl": "^1.2.3"
+    },
+    "frameworks": "*",
+    "platforms": "*"
+}
