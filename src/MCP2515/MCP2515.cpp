@@ -6,8 +6,7 @@
  */
 
 #include "MCP2515.h"
-#include "CANPacket.h"
-#include "Utilities.hpp"
+#include "CANPacket.hpp"
 
 #define TX_BUFFER_NUM 0
 
@@ -152,11 +151,12 @@ void _mcp_interrupts_remove(uint8_t pin, MCP2515* mcp) {
 
 // ----------- End Interrupt Garbage -----------
 
-MCP2515::MCP2515() :
+MCP2515::MCP2515(SPIClass &spi, MCP2515_CAN_CLOCK clk) :
     _csPin(MCP2515_DEFAULT_CS_PIN),
     _intPin(MCP2515_DEFAULT_INT_PIN),
-    _clockFrequency(16e6),
+    _clockFrequency(clk),
     _spiSettings(10e6, MSBFIRST, SPI_MODE0),
+    _spi(spi),
 #ifndef MCP2515_DISABLE_ASYNC_TX_QUEUE
     _canpacketTxQueue(std::queue<CANPacket*>())
 #endif
@@ -183,7 +183,6 @@ int MCP2515::begin(MCP2515_CAN_SPEED baudRate) {
     }
 
     _mcp_cnf_frequency cnf = getCnfForClockFrequency(_clockFrequency, baudRate);
-
     if (!cnf)
         return MCP2515Error::INVAL;
 
@@ -440,7 +439,7 @@ MCP2515Error MCP2515::receivePacket(CANPacket* packet) {
         return MCP2515Error::NOENT;
     }
 
-    packet->_started = true;
+    packet->_lifetime = CANPacket::Lifetime::started;
     packet->_extended = (readRegister(REG_RXBnSIDL(n)) & FLAG_IDE ? true : false);
 
     uint8_t sidh = readRegister(REG_RXBnSIDH(n));
@@ -572,7 +571,7 @@ void MCP2515::processTxQueue() {
 }
 
 MCP2515Error MCP2515::writePacket(CANPacket* packet, bool nowait) {
-    if (!packet->_ended) {
+    if (packet->_lifetime != CANPacket::Lifetime::ended) {
         return MCP2515Error::INVAL;
     }
 
@@ -684,7 +683,7 @@ MCP2515Error MCP2515::abortPacket(CANPacket* packet, bool nowait) {
     return (packet->_status & CANPacket::STATUS_TX_ABORTED ? MCP2515Error::OK : MCP2515Error::BADF);
 }
 
-int MCP2515::waitForPacketStatus(CANPacket* packet, unsigned long status, bool nowait, unsigned long timeout) {
+MCP2515Error MCP2515::waitForPacketStatus(CANPacket* packet, unsigned long status, bool nowait, unsigned long timeout) {
     if (packet->_status & (CANPacket::STATUS_RX_OK | CANPacket::STATUS_RX_INVALID_MESSAGE)) {
         return MCP2515Error::INVAL;
     }
@@ -713,7 +712,7 @@ MCP2515Error MCP2515::handleMessageTransmit(CANPacket* packet, int n, bool cond)
         return MCP2515Error::INVAL;
     }
 
-    int status = MCP2515Error::AGAIN;
+    MCP2515Error status = MCP2515Error::AGAIN;
 
     do {
         uint8_t txbctrl = readRegister(REG_TXBnCTRL(n));
@@ -761,47 +760,6 @@ MCP2515Error MCP2515::handleMessageTransmit(CANPacket* packet, int n, bool cond)
     }
 
     return status;
-}
-
-template<typename T, size_t row, size_t col> 
-using array2d = std::array<std::array<T, col> row>;
-
-_mcp_cnf_frequency MCP2515::getCnfForClockFrequency(MCP2515_CAN_CLOCK clock, MCP2515_CAN_SPEED baudRate) {
-
-    const array2d<_mcp_cnf_frequency, 2, MCP2515_CAN_SPEED::_max> configs = {{
-        { // 8MHz
-            {0x00, 0x80, 0x00},     // CAN_1000KBPS
-            {0x00, 0x90, 0x02},     // CAN_500KBPS
-            {0x00, 0xB1, 0x05},     // CAN_250KBPS
-            {0x00, 0xB4, 0x06},     // CAN_200KBPS
-            {0x01, 0xB1, 0x05},     // CAN_125KBPS
-            {0x01, 0xB4, 0x06},     // CAN_100KBPS
-            {0x01, 0xBF, 0x07},     // CAN_80KBPS
-            {0x03, 0xB4, 0x06},     // CAN_50KBPS
-            {0x03, 0xBF, 0x07},     // CAN_40KBPS
-            {0x07, 0xBF, 0x07},     // CAN_20KBPS
-            {0x0F, 0xBF, 0x07},     // CAN_10KBPS
-            {0x1F, 0xBF, 0x07},     // CAN_5KBPS
-        },
-        { // 16 MHz
-            {0x00, 0xD0, 0x82},     // CAN_1000KBPS
-            {0x00, 0xF0, 0x86},     // CAN_500KBPS
-            {0x41, 0xF1, 0x85},     // CAN_250KBPS
-            {0x01, 0xFA, 0x87},     // CAN_200KBPS
-            {0x03, 0xF0, 0x86},     // CAN_125KBPS
-            {0x03, 0xFA, 0x87},     // CAN_100KBPS
-            {0x03, 0xFF, 0x87},     // CAN_80KBPS
-            {0x07, 0xFA, 0x87},     // CAN_50KBPS
-            {0x07, 0xFF, 0x87},     // CAN_40KBPS
-            {0x0F, 0xFF, 0x87},     // CAN_20KBPS
-            {0x1F, 0xFF, 0x87},     // CAN_10KBPS
-            {0x3F, 0xFF, 0x87},     // CAN_5KBPS
-        }
-    }};
-
-    if (baudRate > MCP2515_CAN_SPEED::MCP_SPEED_max || clock > MCP2515_CAN_CLOCK::MCP_CLOCK_max)
-        return {};
-    return configs[clock][baudRate];
 }
 
 void MCP2515::onInterrupt() {
@@ -861,7 +819,7 @@ void MCP2515::_handleInterruptPacket() {
     while (true) {
         CANPacket packet = CANPacket();
 
-        if (receivePacket(&packet) == 0) {
+        if (receivePacket(&packet) == MCP2515Error::OK) {
             _onReceivePacket(&packet);
         } else {
             break;
@@ -922,4 +880,20 @@ void MCP2515::writeRegister(uint8_t address, uint8_t value) {
 
     digitalWrite(_csPin, HIGH);
     SPI.endTransaction();
+}
+
+MCP2515Error MCP2515::determineReturnCodeByPacketStatus(CANPacket* packet) const {
+    if (packet->getStatus() & CANPacket::STATUS_TX_SENT) {
+        return MCP2515Error::OK;
+    } else if (packet->getStatus() & CANPacket::STATUS_TX_ABORTED) {
+        if (packet->getStatus() & CANPacket::STATUS_TX_ABORT_REQUESTED) {
+            return MCP2515Error::OK;
+        }
+
+        return MCP2515Error::INTR;
+    } else if (packet->getStatus() & CANPacket::STATUS_TX_ERROR) {
+        return MCP2515Error::BADF;
+    }
+
+    return MCP2515Error::INVAL;
 }

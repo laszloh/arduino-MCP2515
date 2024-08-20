@@ -20,7 +20,7 @@ class CANPacket {
     friend class MCP2515;
 
 public:
-    enum Status : uin16_t {
+    enum Flags : uint16_t {
         STATUS_RX_OK = (1 << 0),
         STATUS_RX_INVALID_MESSAGE = (1 << 1),
         STATUS_TX_PENDING = (1 << 2),
@@ -44,7 +44,7 @@ public:
 
     bool isValid() const { return _lifetime == Lifetime::ended; }
     bool isExtended() const {return _extended; }
-    Status getStatus() const {return _status; }
+    uint16_t getStatus() const {return _status; }
 
     uint32_t getId() const { return _id; }
     uint8_t getDlc() const { return _dlc; }
@@ -63,7 +63,7 @@ public:
             return MCP2515Error::OVERFLOW;
 
         std::copy(buffer, buffer + size, _data.begin() + _dlc);
-        dlc += size;
+        _dlc += size;
 
         return MCP2515Error::OK;
     }
@@ -85,7 +85,7 @@ private:
     };
 
     Lifetime _lifetime{Lifetime::undefined};
-    Status _status{0x00};
+    uint16_t _status{0x00};
 
     bool _extended : 1;
     bool _rtr : 1;

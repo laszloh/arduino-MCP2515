@@ -11,10 +11,6 @@
 #undef max
 #undef min
 
-#ifdef ARDUINO_ARCH_AVR
-# include <avr_stl.h>
-#endif
-
 #ifndef MCP2515_DISABLE_ASYNC_TX_QUEUE
 # include <queue>
 #endif
@@ -22,6 +18,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
+#include <array>
 #include "ErrorCodes.hpp"
 
 // According to VS there is a "OVERFLOW" macro defined in corecrt_math.h
@@ -154,16 +151,59 @@ private:
             this->two = l.two;
             this->three = l.three;
         }
+
+        explicit operator bool() const {
+            return one && two && three;
+        }
+
+        static _mcp_cnf_frequency copy_P(const _mcp_cnf_frequency *pmem) {
+            return _mcp_cnf_frequency{pgm_read_byte(pmem->one), pgm_read_byte(pmem->two), pgm_read_byte(pmem->three)};
+        }
     };
 
-    static constexpr _mcp_cnf_frequency getCnfForClockFrequency(MCP2515_CAN_CLOCK clock, MCP2515_CAN_SPEED baudRate, _mcp_cnf_frequency& cnf);
-    static constexpr bool getCnfForClockFrequency16e6(MCP2515_CAN_SPEED baudRate, _mcp_cnf_frequency& cnf);
+    static _mcp_cnf_frequency getCnfForClockFrequency(MCP2515_CAN_CLOCK clock, MCP2515_CAN_SPEED baudRate) {
+        static const _mcp_cnf_frequency configs [][MCP2515_CAN_SPEED::MCP_SPEED_max] PROGMEM = {
+            { // 8MHz
+                {0x00, 0x80, 0x00},     // CAN_1000KBPS
+                {0x00, 0x90, 0x02},     // CAN_500KBPS
+                {0x00, 0xB1, 0x05},     // CAN_250KBPS
+                {0x00, 0xB4, 0x06},     // CAN_200KBPS
+                {0x01, 0xB1, 0x05},     // CAN_125KBPS
+                {0x01, 0xB4, 0x06},     // CAN_100KBPS
+                {0x01, 0xBF, 0x07},     // CAN_80KBPS
+                {0x03, 0xB4, 0x06},     // CAN_50KBPS
+                {0x03, 0xBF, 0x07},     // CAN_40KBPS
+                {0x07, 0xBF, 0x07},     // CAN_20KBPS
+                {0x0F, 0xBF, 0x07},     // CAN_10KBPS
+                {0x1F, 0xBF, 0x07},     // CAN_5KBPS
+            },
+            { // 16 MHz
+                {0x00, 0xD0, 0x82},     // CAN_1000KBPS
+                {0x00, 0xF0, 0x86},     // CAN_500KBPS
+                {0x41, 0xF1, 0x85},     // CAN_250KBPS
+                {0x01, 0xFA, 0x87},     // CAN_200KBPS
+                {0x03, 0xF0, 0x86},     // CAN_125KBPS
+                {0x03, 0xFA, 0x87},     // CAN_100KBPS
+                {0x03, 0xFF, 0x87},     // CAN_80KBPS
+                {0x07, 0xFA, 0x87},     // CAN_50KBPS
+                {0x07, 0xFF, 0x87},     // CAN_40KBPS
+                {0x0F, 0xFF, 0x87},     // CAN_20KBPS
+                {0x1F, 0xFF, 0x87},     // CAN_10KBPS
+                {0x3F, 0xFF, 0x87},     // CAN_5KBPS
+            }
+        };
+        if (baudRate > MCP2515_CAN_SPEED::MCP_SPEED_max || clock > MCP2515_CAN_CLOCK::MCP_CLOCK_max)
+            return {};
+        return _mcp_cnf_frequency::copy_P(&configs[clock][baudRate]);
+    }
 
+    MCP2515Error determineReturnCodeByPacketStatus(CANPacket* packet) const;
+    
     int _csPin;
     int _intPin;
     MCP2515_CAN_CLOCK _clockFrequency;
     SPISettings _spiSettings;
-    SPIClass &spi;
+    SPIClass &_spi;
 
     void (*_onReceivePacket)(CANPacket*);
 

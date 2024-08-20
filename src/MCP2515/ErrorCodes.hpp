@@ -27,29 +27,29 @@ public:
     // Compare with MCP2515Error
     friend bool operator==(const MCP2515Error& lhs,
                             const MCP2515Error& rhs) {
-        return lhs.code_ == rhs.code_;
+        return lhs._code == rhs._code;
     }
     friend bool operator!=(const MCP2515Error& lhs,
                             const MCP2515Error& rhs) {
-        return lhs.code_ != rhs.code_;
+        return lhs._code != rhs._code;
     }
 
     // Compare with Code
     friend bool operator==(const MCP2515Error& lhs, Code rhs) {
-        return lhs.code_ == rhs;
+        return lhs._code == rhs;
     }
     friend bool operator==(Code lhs, const MCP2515Error& rhs) {
-        return lhs == rhs.code_;
+        return lhs == rhs._code;
     }
     friend bool operator!=(const MCP2515Error& lhs, Code rhs) {
-        return lhs.code_ != rhs;
+        return lhs._code != rhs;
     }
     friend bool operator!=(Code lhs, const MCP2515Error& rhs) {
-        return lhs != rhs.code_;
+        return lhs != rhs._code;
     }
 
     // return true if there is an error
-    explicit operator bool() const { return _code != Code::Ok; }
+    explicit operator bool() const { return _code != Code::OK; }
 
     // return internal enum
     Code code() const { return _code; }
@@ -65,5 +65,5 @@ public:
     }
 
 private:
-    Code _code{Code::Ok};
+    Code _code{Code::OK};
 };
