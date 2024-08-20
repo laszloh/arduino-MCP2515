@@ -37,7 +37,7 @@ void loop() {
     std.writeData('d');
     std.end();
 
-    MCP2515Error result = MCP.writePacket(&std);
+    MCP2515Error result = MCP.writePacket(std);
     Serial.print("Write standard package error code: ");
     Serial.println(result.c_str());
 
@@ -53,7 +53,7 @@ void loop() {
     ext.writeData('0');
     ext.end();
 
-    MCP2515Error result2 = MCP.writePacket(&ext);
+    MCP2515Error result2 = MCP.writePacket(ext);
     Serial.print("Write extended package error code: ");
     Serial.println(result2.c_str());
 

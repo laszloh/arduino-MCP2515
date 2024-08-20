@@ -18,7 +18,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-#include <array>
 #include "ErrorCodes.hpp"
 
 // According to VS there is a "OVERFLOW" macro defined in corecrt_math.h
@@ -62,6 +61,8 @@ class CANPacket;
 #define MCP2515_DEFAULT_CS_PIN  10
 #define MCP2515_DEFAULT_INT_PIN 2
 
+using packetCallback = void(*)(CANPacket&&);
+
 class MCP2515 {
 public:
     enum MCP2515_CAN_SPEED {
@@ -89,10 +90,10 @@ public:
     };
 
 public:
-    MCP2515(SPIClass &spi = SPI, MCP2515_CAN_CLOCK clk = MCP2515_CAN_CLOCK::MCP_8MHZ);
-    ~MCP2515();
+    MCP2515(MCP2515_CAN_CLOCK clk = MCP2515_CAN_CLOCK::MCP_8MHZ, SPIClass &spi = SPI);
+    ~MCP2515() = default;
 
-    int begin(MCP2515_CAN_SPEED baudRate);
+    MCP2515Error begin(MCP2515_CAN_SPEED baudRate);
     void end();
 
     uint8_t getStatus();
@@ -100,14 +101,13 @@ public:
 
     void setPins(int cs = MCP2515_DEFAULT_CS_PIN, int irq = MCP2515_DEFAULT_INT_PIN);
     void setSPIFrequency(uint32_t frequency);
-    void setClockFrequency(MCP2515_CAN_CLOCK clockFrequency);
 
     MCP2515Error setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask);
     MCP2515Error setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter);
 
     int getMode();
     MCP2515Error setConfigMode();
-    MCP2515Error setListenMode(bool allowInvalidPackets = false);
+    MCP2515Error setListenMode();
     MCP2515Error setLoopbackMode();
     MCP2515Error setSleepMode();
     MCP2515Error setNormalMode();
@@ -115,13 +115,14 @@ public:
     MCP2515Error setWakeupFilter(bool enable);
     MCP2515Error setOneShotMode(bool enable);
 
-    MCP2515Error receivePacket(CANPacket* packet);
-    void onReceivePacket(void(*callback)(CANPacket*));
+    MCP2515Error receivePacket(CANPacket &packet);
+
+    void onReceivePacket(packetCallback callback);
 
     size_t getTxQueueLength();
     void processTxQueue();
 
-    MCP2515Error writePacket(CANPacket* packet, bool nowait = false);
+    MCP2515Error writePacket(const CANPacket &packet, bool nowait = false);
     MCP2515Error abortPacket(CANPacket* packet, bool nowait = false);
     MCP2515Error waitForPacketStatus(CANPacket* packet, unsigned long status, bool nowait = false, unsigned long timeout = 0);
 
@@ -129,14 +130,15 @@ public:
     void _handleInterruptPacket();
 
 private:
-
     void reset();
 
     uint8_t readRegister(uint8_t address);
     void modifyRegister(uint8_t address, uint8_t mask, uint8_t value);
     void writeRegister(uint8_t address, uint8_t value);
+    uint8_t getMCP2515Status();
 
-    MCP2515Error handleMessageTransmit(CANPacket* packet, int n, bool cond);
+    MCP2515Error handleMessageTransmit(int txBuf, bool cond);
+    int8_t getFreeTxBuffer();
 
     struct _mcp_cnf_frequency {
         uint8_t one{0x00};
@@ -196,23 +198,20 @@ private:
             return {};
         return _mcp_cnf_frequency::copy_P(&configs[clock][baudRate]);
     }
-
-    MCP2515Error determineReturnCodeByPacketStatus(CANPacket* packet) const;
     
-    int _csPin;
-    int _intPin;
+    uint8_t _csPin{MCP2515_DEFAULT_CS_PIN};
+    uint8_t _intPin{MCP2515_DEFAULT_INT_PIN};
     MCP2515_CAN_CLOCK _clockFrequency;
-    SPISettings _spiSettings;
+    SPISettings _spiSettings{10000000, MSBFIRST, SPI_MODE0};
     SPIClass &_spi;
 
-    void (*_onReceivePacket)(CANPacket*);
+    packetCallback _onReceivePacket;
 
-    bool _oneShotMode = false;
-    bool _allowInvalidRx = false;
-    uint8_t _rxErrorCount = 0;
+    bool _oneShotMode{false};
+    uint8_t _rxErrorCount{0};
 
 #ifndef MCP2515_DISABLE_ASYNC_TX_QUEUE
-    std::queue<CANPacket*> _canpacketTxQueue;
+    std::queue<CANPacket> _canpacketTxQueue{};
 #endif
 };
 
