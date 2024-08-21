@@ -87,99 +87,14 @@
 #define FLAG_ST_TX2REQ  0x40
 #define FLAG_ST_TX2IF   0x80
 
-// ----------- Interrupt garbage -----------
-
-#if defined(ARDUINO_ARCH_SAMD)
-# include <wiring_private.h>
-
-# define internalPreviousInterruptState() EIC->INTENSET.reg
-# define internalPinToInterrupt(n, prev) _internalPinToInterrupt(n, prev)
-# define _internalAttachInterrupt(pin, func, mode) attachInterrupt(pin, func, mode)
-
-static inline __attribute__((always_inline))
-int _internalPinToInterrupt(int pin, uint32_t prev) {
-    uint32_t reg = EIC->INTENSET.reg & ~prev;
-
-    for (uint32_t i = EXTERNAL_INT_0; i <= EXTERNAL_INT_15; i++) {
-        if ((reg & (1 << i))) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-static inline __attribute__((always_inline))
-int interruptGetCalledPin() {
-    for (uint32_t i = EXTERNAL_INT_0; i <= EXTERNAL_INT_15; i++) {
-        if ((EIC->INTFLAG.reg & (1 << i))) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-#else
-MCP2515* GLOBAL_MCP = nullptr;
-#endif
-
-// --- Generic Interrupts ---
-
-#ifdef __MCP2515_MULTI_INTERRUPTS_ENABLE__
-struct mcp_interrupt_info {
-    uint8_t pin = -1;
-    MCP2515* mcp = nullptr;
-};
-
-static mcp_interrupt_info _mcp_interrupts[EXTERNAL_NUM_INTERRUPTS];
-static int _mcp_interrupts_counter = 0;
-
-int _mcp_interrupts_find(uint8_t pin, mcp_interrupt_info* info) {
-    for (int i = 0; i < _mcp_interrupts_counter; i++) {
-        if (_mcp_interrupts[i].pin == pin) {
-            *info = _mcp_interrupts[i];
-            return i;
-        }
-    }
-
-    return MCP2515Error::NOENT;
-}
-
-void _mcp_interrupts_insert(uint8_t pin, MCP2515* mcp) {
-    mcp_interrupt_info info;
-    int pos = _mcp_interrupts_find(pin, &info);
-
-    info.pin = pin;
-    info.mcp = mcp;
-
-    if (pos < 0) {
-        memcpy(&_mcp_interrupts[_mcp_interrupts_counter], &info, sizeof(info));
-        _mcp_interrupts_counter++;
-    } else {
-        memcpy(&_mcp_interrupts[pos], &info, sizeof(info));
-    }
-}
-
-void _mcp_interrupts_remove(uint8_t pin, MCP2515* mcp) {
-    mcp_interrupt_info info;
-    int pos = _mcp_interrupts_find(pin, &info);
-
-    if (pos >= 0 && info.mcp != nullptr) {
-        info.mcp = nullptr;
-        memcpy(&_mcp_interrupts[_mcp_interrupts_counter], &info, sizeof(info));
-    }
-}
-#endif
-
-// ----------- End Interrupt Garbage -----------
-
-MCP2515::MCP2515(MCP2515_CAN_CLOCK clk, SPIClass &spi) :
+MCP2515::MCP2515(int cs, CAN_CLOCK clk, SPIClass &spi) :
+    _csPin(cs),
     _clockFrequency(clk),
     _spi(spi)
 {
 }
 
-MCP2515Error MCP2515::begin(MCP2515_CAN_SPEED baudRate) {
+MCP2515Error MCP2515::begin(CAN_SPEED baudRate) {
     pinMode(_csPin, OUTPUT);
 
     SPI.begin();
@@ -212,17 +127,8 @@ void MCP2515::end() {
     SPI.end();
 }
 
-uint8_t MCP2515::getStatus() {
-    return readRegister(REG_CANSTAT);
-}
-
-uint8_t MCP2515::getErrorFlags() {
-    return readRegister(REG_EFLG);
-}
-
-void MCP2515::setPins(int cs, int irq) {
-    _csPin = cs;
-    _intPin = irq;
+MCP2515::ErrorFlags MCP2515::getErrorFlags() {
+    return ErrorFlags{readRegister(REG_EFLG)};
 }
 
 void MCP2515::setSPIFrequency(uint32_t frequency) {
@@ -230,15 +136,14 @@ void MCP2515::setSPIFrequency(uint32_t frequency) {
 }
 
 MCP2515Error MCP2515::setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask) {
-    writeRegister(REG_CANCTRL, 0x80);
-    if (readRegister(REG_CANCTRL) != 0x80) {
-        return MCP2515Error::BADF;
-    }
+    auto err = setConfigMode();
+    if(err)
+        return err;
 
     uint8_t eid0 = 0;
     uint8_t eid8 = 0;
-    uint8_t sidh = 0;
-    uint8_t sidl = 0;
+    uint8_t sidh;
+    uint8_t sidl;
 
     if (extended) {
         uint16_t canfilter = mask & 0x0FFFF;
@@ -259,24 +164,18 @@ MCP2515Error MCP2515::setMask(const MCP2515_CAN_MASK num, bool extended, uint32_
     writeRegister(REG_RXMnSIDH(num), sidh);
     writeRegister(REG_RXMnSIDL(num), sidl);
 
-    writeRegister(REG_CANCTRL, 0x00);
-    if (readRegister(REG_CANCTRL) != 0x00) {
-        return MCP2515Error::BADF;
-    }
-
-    return MCP2515Error::OK;
+    return setNormalMode();
 }
 
 MCP2515Error MCP2515::setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter) {
-    writeRegister(REG_CANCTRL, 0x80);
-    if (readRegister(REG_CANCTRL) != 0x80) {
-        return MCP2515Error::BADF;
-    }
+    auto err = setConfigMode();
+    if(err)
+        return err;
 
     uint8_t eid0 = 0;
     uint8_t eid8 = 0;
-    uint8_t sidh = 0;
-    uint8_t sidl = 0;
+    uint8_t sidh;
+    uint8_t sidl;
 
     if (extended) {
         uint16_t canfilter = filter & 0x0FFFF;
@@ -297,60 +196,29 @@ MCP2515Error MCP2515::setFilter(const MCP2515_CAN_RXF num, bool extended, uint32
     writeRegister(REG_RXFnSIDH(num), sidh);
     writeRegister(REG_RXFnSIDL(num), sidl);
 
-    writeRegister(REG_CANCTRL, 0x00);
-    if (readRegister(REG_CANCTRL) != 0x00) {
-        return MCP2515Error::BADF;
-    }
-
-    return MCP2515Error::OK;
+    return setNormalMode();
 }
 
-int MCP2515::getMode() {
-    switch ((readRegister(REG_CANCTRL) & 0xE0)) {
-        case 0x00:
-            return MCP2515_MODES::NORMAL;
-        case 0x40:
-            return MCP2515_MODES::LOOPBACK;
-        case 0x60:
-            return MCP2515_MODES::LISTEN;
-        case 0x80:
-            return MCP2515_MODES::CONFIG;
-        case 0x20:
-            return MCP2515_MODES::SLEEP;
-    }
-
-    return -1;
+MCP2515_MODES MCP2515::getMode() {
+    return static_cast<MCP2515_MODES>(readRegister(REG_CANCTRL) >> 5);
 }
 
 MCP2515Error MCP2515::setConfigMode() {
-    writeRegister(REG_CANCTRL, 0x80);
-    if (readRegister(REG_CANCTRL) != 0x80) {
-        return MCP2515Error::BADF;
-    }
-
-    return MCP2515Error::OK;
+    return setMode(MCP2515_MODES::CONFIG);
 }
 
 MCP2515Error MCP2515::setListenMode() {
-    writeRegister(REG_CANCTRL, 0x60);
-    if (readRegister(REG_CANCTRL) != 0x60) {
-        return MCP2515Error::BADF;
-    }
-
-    return MCP2515Error::OK;
+    return setMode(MCP2515_MODES::LISTEN);
 }
 
 MCP2515Error MCP2515::setLoopbackMode() {
-    writeRegister(REG_CANCTRL, 0x40);
-    if (readRegister(REG_CANCTRL) != 0x40) {
-        return MCP2515Error::BADF;
-    }
-
-    return MCP2515Error::OK;
+    return setMode(MCP2515_MODES::LOOPBACK);
 }
 
 MCP2515Error MCP2515::setSleepMode() {
-    writeRegister(REG_CANCTRL, 0x20);
+    auto err = setMode(MCP2515_MODES::SLEEP);
+    if(err)
+        return err;
 
     // Block until CAN controller goes into sleep.
     // "These bits should be read after sending the SLEEP command to the MCP2515.
@@ -364,11 +232,14 @@ MCP2515Error MCP2515::setSleepMode() {
 }
 
 MCP2515Error MCP2515::setNormalMode() {
-    writeRegister(REG_CANCTRL, 0x00);
-    if (readRegister(REG_CANCTRL) != 0x00) {
-        return MCP2515Error::BADF;
-    }
+    return setMode(MCP2515_MODES::NORMAL);
+}
 
+MCP2515Error MCP2515::setMode(MCP2515_MODES mode) {
+    uint8_t raw = static_cast<uint8_t>(mode) << 5;
+    modifyRegister(REG_CANCTRL, 0xE0, raw);
+    if( (readRegister(REG_CANCTRL) & 0xE0) != raw)
+        return MCP2515Error::BADF;
     return MCP2515Error::OK;
 }
 
@@ -396,93 +267,53 @@ MCP2515Error MCP2515::setOneShotMode(bool enable) {
 }
 
 MCP2515Error MCP2515::receivePacket(CANPacket &packet) {
-    int n;
-    uint8_t intf = readRegister(REG_CANINTF);
+    int rxBuf;
+    uint8_t intf = readStatus();
 
-    if (intf & FLAG_RXnIF(0)) {
-        n = 0;
-    } else if (intf & FLAG_RXnIF(1)) {
-        n = 1;
+    if (intf & FLAG_ST_RX0IF) {
+        rxBuf = 0;
+    } else if (intf & FLAG_ST_RX1IF) {
+        rxBuf = 1;
     } else {
         return MCP2515Error::NOENT;
     }
 
-    packet->_lifetime = CANPacket::Lifetime::started;
-    packet->_extended = (readRegister(REG_RXBnSIDL(n)) & FLAG_IDE ? true : false);
+    packet._extended = (readRegister(REG_RXBnSIDL(rxBuf)) & FLAG_IDE ? true : false);
 
-    uint8_t sidh = readRegister(REG_RXBnSIDH(n));
-    uint8_t sidl = readRegister(REG_RXBnSIDL(n));
+    uint8_t sidh = readRegister(REG_RXBnSIDH(rxBuf));
+    uint8_t sidl = readRegister(REG_RXBnSIDL(rxBuf));
 
     uint32_t idA = ((sidh << 3) & 0x07F8) | ((sidl >> 5) & 0x07);
 
-    if (packet->_extended) {
-        uint32_t idB = (((uint32_t)(sidl & 0x03) << 16) & 0x30000) | ((readRegister(REG_RXBnEID8(n)) << 8) & 0xFF00) | readRegister(REG_RXBnEID0(n));
+    if (packet._extended) {
+        uint32_t idB = (((uint32_t)(sidl & 0x03) << 16) & 0x30000) | ((readRegister(REG_RXBnEID8(rxBuf)) << 8) & 0xFF00) | readRegister(REG_RXBnEID0(rxBuf));
 
-        packet->_id = (idA << 18) | idB;
-        packet->_rtr = (readRegister(REG_RXBnDLC(n)) & FLAG_RTR ? true : false);
+        packet._id = (idA << 18) | idB;
+        packet._rtr = (readRegister(REG_RXBnDLC(rxBuf)) & FLAG_RTR ? true : false);
     } else {
-        packet->_id = idA;
-        packet->_rtr = (sidl & FLAG_SRR ? true : false);
+        packet._id = idA;
+        packet._rtr = (sidl & FLAG_SRR ? true : false);
     }
 
-    packet->_dlc = readRegister(REG_RXBnDLC(n)) & 0x0F;
+    packet._dlc = readRegister(REG_RXBnDLC(rxBuf)) & 0x0F;
 
-    if (packet->_rtr) {
-        modifyRegister(REG_CANINTF, FLAG_RXnIF(n), 0x00);
-    } else {
+    if (!packet._rtr) {
         // READ RX BUFFER
         SPI.beginTransaction(_spiSettings);
         digitalWrite(_csPin, LOW);
 
-        SPI.transfer((0x92 | (n << 2)));
+        SPI.transfer((0x92 | (rxBuf << 2)));
 
-        for (int i = 0; i < packet->_dlc; i++) {
-            packet->writeData(SPI.transfer(0x00));
+        for (uint8_t i = 0; i < packet._dlc; i++) {
+            packet.writeData(SPI.transfer(0x00));
         }
 
         digitalWrite(_csPin, HIGH);
         SPI.endTransaction();
     }
-
-    packet->end();
-    packet->_status |= CANPacket::STATUS_RX_OK;
+    modifyRegister(REG_CANINTF, FLAG_RXnIF(rxBuf), 0x00);
 
     return MCP2515Error::OK;
-}
-
-void MCP2515::onReceivePacket(packetCallback callback) {
-    _onReceivePacket = callback;
-    pinMode(_intPin, INPUT);
-
-#ifdef __MCP2515_MULTI_INTERRUPTS_ENABLE__
-    uint32_t prev = internalPreviousInterruptState();
-#endif
-
-    if (callback) {
-        SPI.usingInterrupt(digitalPinToInterrupt(_intPin));
-
-#ifdef __MCP2515_MULTI_INTERRUPTS_ENABLE__
-        _internalAttachInterrupt(digitalPinToInterrupt(_intPin), MCP2515::onInterrupt, LOW);
-        _mcp_interrupts_insert(internalPinToInterrupt(_intPin, prev), this);
-#else
-        GLOBAL_MCP = this;
-        attachInterrupt(digitalPinToInterrupt(_intPin), MCP2515::onInterrupt, LOW);
-#endif
-        modifyRegister(REG_CANINTE, 0xDF, 0xDF);
-    } else {
-#ifdef __MCP2515_MULTI_INTERRUPTS_ENABLE__
-        _mcp_interrupts_remove(internalPinToInterrupt(_intPin, prev), this);
-#else
-        GLOBAL_MCP = nullptr;
-#endif
-
-        modifyRegister(REG_CANINTE, 0xDF, 0x00);
-        detachInterrupt(digitalPinToInterrupt(_intPin));
-
-#ifdef SPI_HAS_NOTUSINGINTERRUPT
-        SPI.notUsingInterrupt(digitalPinToInterrupt(_intPin));
-#endif
-    }
 }
 
 size_t MCP2515::getTxQueueLength() {
@@ -516,7 +347,7 @@ void MCP2515::processTxQueue() {
 }
 
 MCP2515Error MCP2515::writePacket(const CANPacket &packet, bool nowait) {
-    if (packet._lifetime != CANPacket::Lifetime::ended) {
+    if (!packet) {
         return MCP2515Error::INVAL;
     }
     // MCP controller is NOT in normal or loopback mode
@@ -549,38 +380,10 @@ MCP2515Error MCP2515::writePacket(const CANPacket &packet, bool nowait) {
     // Clear abort bit (might have been set previously)
     modifyRegister(REG_CANCTRL, 0x10, 0x00);
 
-    // write id
-    if (packet._extended) {
-        writeRegister(REG_TXBnSIDH(txBuf), (packet._id >> 21));
-        writeRegister(REG_TXBnSIDL(txBuf), ((((packet._id >> 18) & 0x07) << 5) | FLAG_EXIDE | ((packet._id >> 16) & 0x03)));
-        writeRegister(REG_TXBnEID8(txBuf), ((packet._id >> 8) & 0xFF));
-        writeRegister(REG_TXBnEID0(txBuf), (packet._id & 0xFF));
-    } else {
-        writeRegister(REG_TXBnSIDH(txBuf), (packet._id >> 3));
-        writeRegister(REG_TXBnSIDL(txBuf), (packet._id << 5));
-        writeRegister(REG_TXBnEID8(txBuf), 0x00);
-        writeRegister(REG_TXBnEID0(txBuf), 0x00);
-    }
+    auto data = serialize(packet);
 
-    // write data
-    if (packet._rtr) {
-        writeRegister(REG_TXBnDLC(txBuf), FLAG_RTR | packet._dlc);
-    } else {
-        writeRegister(REG_TXBnDLC(txBuf), packet._dlc);
-
-        // LOAD TX BUFFER
-        SPI.beginTransaction(_spiSettings);
-        digitalWrite(_csPin, LOW);
-
-        SPI.transfer(REG_TXBnD0(txBuf));
-
-        for (int i = 0; i < packet._dlc; i++) {
-            SPI.transfer(packet._data[i]);
-        }
-
-        digitalWrite(_csPin, HIGH);
-        SPI.endTransaction();
-    }
+    // write the raw data directly to the tx buffer
+    writeRegisters(REG_TXBnSIDH(txBuf), data, packet._dlc + 5);
 
     // trigger tx ready for this buffer
     modifyRegister(REG_TXBnCTRL(txBuf), FLAG_TXREQ, FLAG_TXREQ);
@@ -592,30 +395,6 @@ MCP2515Error MCP2515::writePacket(const CANPacket &packet, bool nowait) {
     }
 
     return handleMessageTransmit(txBuf, true);
-}
-
-MCP2515Error MCP2515::abortPacket(CANPacket* packet, bool nowait) {
-    return MCP2515Error::BADF;
-}
-
-MCP2515Error MCP2515::waitForPacketStatus(CANPacket* packet, unsigned long status, bool nowait, unsigned long timeout) {
-    if (packet->_status & (CANPacket::STATUS_RX_OK | CANPacket::STATUS_RX_INVALID_MESSAGE)) {
-        return MCP2515Error::INVAL;
-    }
-
-    unsigned long ms = millis();
-
-    do {
-        if (handleMessageTransmit(packet, TX_BUFFER_NUM, false) != MCP2515Error::AGAIN) {
-            return (packet->_status & status ? MCP2515Error::OK : MCP2515Error::BADF);
-        }
-
-        if (!nowait) {
-            delayMicroseconds(10);
-        }
-    } while (!nowait && (timeout == 0 || (millis() - ms) < timeout));
-
-    return MCP2515Error::AGAIN;
 }
 
 MCP2515Error MCP2515::handleMessageTransmit(int txBuf, bool cond) {
@@ -650,25 +429,7 @@ MCP2515Error MCP2515::handleMessageTransmit(int txBuf, bool cond) {
     return status;
 }
 
-void MCP2515::onInterrupt() {
-#ifdef __MCP2515_MULTI_INTERRUPTS_ENABLE__
-    int pin = interruptGetCalledPin();
-    if (pin < 0) {
-        return;
-    }
-
-    mcp_interrupt_info info;
-    if (_mcp_interrupts_find(pin, &info) >= 0) {
-        info.mcp->_handleInterruptPacket();
-    }
-#else
-    if (GLOBAL_MCP != nullptr) {
-        GLOBAL_MCP->_handleInterruptPacket();
-    }
-#endif
-}
-
-void MCP2515::_handleInterruptPacket() {
+void MCP2515::handleInterrupt() {
     uint8_t intf = readRegister(REG_CANINTF);
 
     if (intf == 0) {
@@ -676,60 +437,60 @@ void MCP2515::_handleInterruptPacket() {
     }
 
     // process receive queue
-    CANPacket packet;
-    while(receivePacket(&packet) != MCP2515Error::NOENT) {
-        if(packet) {
-            _onReceivePacket(std::move(packet));
+    if (intf & (FLAG_RXnIF(0) | FLAG_RXnIF(1))) {
+        CANPacket packet;
+        while(receivePacket(packet) != MCP2515Error::NOENT) {
+            if(packet && _onReceivePacket)
+                _onReceivePacket(packet);
         }
     }
 
     // process tx queue
-    processTxQueue();
+    if(intf & (FLAG_TXnIF(0) | FLAG_TXnIF(1) | FLAG_TXnIF(2)))
+        processTxQueue();
 
-//    int n = TX_BUFFER_NUM;
+    // Clear all TXnIF + MERRF bits
+    modifyRegister(REG_CANINTF, 0x9C, 0x00);
+}
 
-// #ifndef MCP2515_DISABLE_ASYNC_TX_QUEUE
-//     if (intf & FLAG_TXnIF(n)) {
-//         if (!_canpacketTxQueue.empty()) {
-//             CANPacket* packet = _canpacketTxQueue.front();
-//             _canpacketTxQueue.pop();
-
-//             packet->_status &= ~(CANPacket::STATUS_TX_PENDING | CANPacket::STATUS_TX_ABORTED);
-//             packet->_status |= CANPacket::STATUS_TX_SENT;
-//         }
-//     } else if (intf & 0x80) {
-//         if (!_canpacketTxQueue.empty()) {
-//             CANPacket* packet = _canpacketTxQueue.front();
-//             _canpacketTxQueue.pop();
-
-//             packet->_status &= ~(CANPacket::STATUS_TX_PENDING | CANPacket::STATUS_TX_ABORTED);
-//             packet->_status |= CANPacket::STATUS_TX_ERROR;
-//         }
-//     }
-// #endif
-
-//     // Clear all TXnIF + MERRF bits
-//     modifyRegister(REG_CANINTF, 0x9C, 0x00);
-
-//     if ((intf & FLAG_RXnIF(0)) == 0 && (intf & FLAG_RXnIF(1)) == 0) {
-//         return;
-//     }
-
-//     while (true) {
-//         CANPacket packet = CANPacket();
-
-        if (receivePacket(&packet) == MCP2515Error::OK) {
-//             _onReceivePacket(&packet);
-//         } else {
-//             break;
-//         }
-//     }
-
-//     processTxQueue();
+MCP2515::_mcp_cnf_frequency MCP2515::getCnfForClockFrequency(CAN_CLOCK clock, CAN_SPEED baudRate) {
+    static const _mcp_cnf_frequency configs [][CAN_SPEED::MCP_SPEED_max] PROGMEM = {
+        { // 8MHz
+            {0x00, 0x80, 0x00},     // CAN_1000KBPS
+            {0x00, 0x90, 0x02},     // CAN_500KBPS
+            {0x00, 0xB1, 0x05},     // CAN_250KBPS
+            {0x00, 0xB4, 0x06},     // CAN_200KBPS
+            {0x01, 0xB1, 0x05},     // CAN_125KBPS
+            {0x01, 0xB4, 0x06},     // CAN_100KBPS
+            {0x01, 0xBF, 0x07},     // CAN_80KBPS
+            {0x03, 0xB4, 0x06},     // CAN_50KBPS
+            {0x03, 0xBF, 0x07},     // CAN_40KBPS
+            {0x07, 0xBF, 0x07},     // CAN_20KBPS
+            {0x0F, 0xBF, 0x07},     // CAN_10KBPS
+            {0x1F, 0xBF, 0x07},     // CAN_5KBPS
+        },
+        { // 16 MHz
+            {0x00, 0xD0, 0x82},     // CAN_1000KBPS
+            {0x00, 0xF0, 0x86},     // CAN_500KBPS
+            {0x41, 0xF1, 0x85},     // CAN_250KBPS
+            {0x01, 0xFA, 0x87},     // CAN_200KBPS
+            {0x03, 0xF0, 0x86},     // CAN_125KBPS
+            {0x03, 0xFA, 0x87},     // CAN_100KBPS
+            {0x03, 0xFF, 0x87},     // CAN_80KBPS
+            {0x07, 0xFA, 0x87},     // CAN_50KBPS
+            {0x07, 0xFF, 0x87},     // CAN_40KBPS
+            {0x0F, 0xFF, 0x87},     // CAN_20KBPS
+            {0x1F, 0xFF, 0x87},     // CAN_10KBPS
+            {0x3F, 0xFF, 0x87},     // CAN_5KBPS
+        }
+    };
+    if (baudRate > CAN_SPEED::MCP_SPEED_max || clock > CAN_CLOCK::MCP_CLOCK_max)
+        return {};
+    return _mcp_cnf_frequency::copy_P(&configs[clock][baudRate]);
 }
 
 int8_t MCP2515::getFreeTxBuffer() {
-    uint8_t status = getMCP2515Status();
+    uint8_t status = readStatus();
 
     // find the first free buffer
     if(!(status & FLAG_ST_TX0REQ))
@@ -751,7 +512,7 @@ void MCP2515::reset() {
     digitalWrite(_csPin, HIGH);
     SPI.endTransaction();
 
-    delayMicroseconds(10);
+    delay(10);
 }
 
 uint8_t MCP2515::readRegister(uint8_t address) {
@@ -793,7 +554,7 @@ void MCP2515::writeRegister(uint8_t address, uint8_t value) {
     SPI.endTransaction();
 }
 
-uint8_t MCP2515::getMCP2515Status() {
+uint8_t MCP2515::readStatus() {
     SPI.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
 
@@ -802,4 +563,25 @@ uint8_t MCP2515::getMCP2515Status() {
 
     digitalWrite(_csPin, HIGH);
     return val;
+}
+
+std::array<uint8_t, 8 + 5> MCP2515::serialize(const CANPacket &packet) {
+    std::array<uint8_t, 8+5> dat;
+
+    if(packet._extended) {
+        dat[0] = (packet._id >> 21);
+        dat[1] = ((((packet._id >> 18) & 0x07) << 5) | FLAG_EXIDE | ((packet._id >> 16) & 0x03));
+        dat[2] = ((packet._id >> 8) & 0xFF);
+        dat[3] = (packet._id & 0xFF);
+    } else {
+        dat[0] = (packet._id >> 3);
+        dat[1] = (packet._id << 5);
+        dat[2] = 0x00;
+        dat[3] = 0x00;
+    }
+
+    dat[4] = packet._dlc;
+
+    std::copy(packet._data.begin(), packet._data.begin() + packet._dlc, dat.begin() + 5);
+    return dat;
 }

@@ -35,27 +35,20 @@ void loop() {
     std.writeData('b');
     std.writeData('c');
     std.writeData('d');
-    std.end();
 
     MCP2515Error result = MCP.writePacket(std);
     Serial.print("Write standard package error code: ");
-    Serial.println(result.c_str());
+    Serial.println(result.f_str());
 
     Serial.println("Sending 29 bit extended packet");
 
     CANPacket ext = CANPacket();
-
-    std.startExtended(0xABCDEF);
-    ext.writeData('h'); // up to 8 data bytes
-    ext.writeData('e');
-    ext.writeData('l');
-    ext.writeData('l');
-    ext.writeData('0');
-    ext.end();
+    ext.startExtended(0xABCDEF);
+    ext.writeData("hell0");
 
     MCP2515Error result2 = MCP.writePacket(ext);
     Serial.print("Write extended package error code: ");
-    Serial.println(result2.c_str());
+    Serial.println(result2.f_str());
 
     delay(1000);
 }
