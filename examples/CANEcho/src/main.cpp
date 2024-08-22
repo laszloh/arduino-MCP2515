@@ -33,7 +33,7 @@ void loop() {
     auto rxErr = MCP.readMessage(rxPacket);
     if(rxErr == MCP2515Error::OK) {
         // packet received
-        Serial.printf(F("Received packet, id: 0x%08x, extended: %d, dlc: %d"), rxPacket.id(),
+        Serial.printf(F("Received packet, id: 0x%08x, extended: %d, dlc: %d\n"), rxPacket.id(),
                       rxPacket.extended(), rxPacket.dlc());
 
         CANPacket txPacket;
@@ -52,5 +52,17 @@ void loop() {
     } else if(rxErr != MCP2515Error::NOMSG) {
         Serial.print(F("Rx Error: "));
         Serial.println(rxErr.f_str());
+    } else {
+        static uint32_t lastHeartbeat;
+        static constexpr uint32_t heartbeatInterval = 1000;
+
+        if(millis() - lastHeartbeat > heartbeatInterval) {
+            lastHeartbeat = millis();
+
+            auto errFlags = MCP.getErrorFlags();
+            Serial.printf(F("Error flags: 0x%02x\n"), errFlags.flags);
+        }
     }
+
+
 }
