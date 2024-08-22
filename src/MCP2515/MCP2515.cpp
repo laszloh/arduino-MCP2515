@@ -97,7 +97,7 @@ MCP2515::MCP2515(int cs, CAN_CLOCK clk, SPIClass &spi) :
 MCP2515Error MCP2515::begin(CAN_SPEED baudRate) {
     pinMode(_csPin, OUTPUT);
 
-    SPI.begin();
+    _spi.begin();
     reset();
 
     writeRegister(REG_CANCTRL, 0x80);
@@ -124,7 +124,6 @@ MCP2515Error MCP2515::begin(CAN_SPEED baudRate) {
 
 void MCP2515::end() {
     reset();
-    SPI.end();
 }
 
 MCP2515::ErrorFlags MCP2515::getErrorFlags() {
@@ -299,17 +298,17 @@ MCP2515Error MCP2515::receivePacket(CANPacket &packet) {
 
     if (!packet._rtr) {
         // READ RX BUFFER
-        SPI.beginTransaction(_spiSettings);
+        _spi.beginTransaction(_spiSettings);
         digitalWrite(_csPin, LOW);
 
-        SPI.transfer((0x92 | (rxBuf << 2)));
+        _spi.transfer((0x92 | (rxBuf << 2)));
 
         for (uint8_t i = 0; i < packet._dlc; i++) {
-            packet.writeData(SPI.transfer(0x00));
+            packet.writeData(_spi.transfer(0x00));
         }
 
         digitalWrite(_csPin, HIGH);
-        SPI.endTransaction();
+        _spi.endTransaction();
     }
     modifyRegister(REG_CANINTF, FLAG_RXnIF(rxBuf), 0x00);
 
@@ -504,62 +503,62 @@ int8_t MCP2515::getFreeTxBuffer() {
 }
 
 void MCP2515::reset() {
-    SPI.beginTransaction(_spiSettings);
+    _spi.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
 
-    SPI.transfer(SPI_CMD_RST);
+    _spi.transfer(SPI_CMD_RST);
 
     digitalWrite(_csPin, HIGH);
-    SPI.endTransaction();
+    _spi.endTransaction();
 
     delay(10);
 }
 
 uint8_t MCP2515::readRegister(uint8_t address) {
-    SPI.beginTransaction(_spiSettings);
+    _spi.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
 
-    SPI.transfer(SPI_CMD_RD);
-    SPI.transfer(address);
-    uint8_t value = SPI.transfer(0x00);
+    _spi.transfer(SPI_CMD_RD);
+    _spi.transfer(address);
+    uint8_t value = _spi.transfer(0x00);
 
     digitalWrite(_csPin, HIGH);
-    SPI.endTransaction();
+    _spi.endTransaction();
 
     return value;
 }
 
 void MCP2515::modifyRegister(uint8_t address, uint8_t mask, uint8_t value) {
-    SPI.beginTransaction(_spiSettings);
+    _spi.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
 
-    SPI.transfer(SPI_CMD_BMD);
-    SPI.transfer(address);
-    SPI.transfer(mask);
-    SPI.transfer(value);
+    _spi.transfer(SPI_CMD_BMD);
+    _spi.transfer(address);
+    _spi.transfer(mask);
+    _spi.transfer(value);
 
     digitalWrite(_csPin, HIGH);
-    SPI.endTransaction();
+    _spi.endTransaction();
 }
 
 void MCP2515::writeRegister(uint8_t address, uint8_t value) {
-    SPI.beginTransaction(_spiSettings);
+    _spi.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
 
-    SPI.transfer(SPI_CMD_WR);
-    SPI.transfer(address);
-    SPI.transfer(value);
+    _spi.transfer(SPI_CMD_WR);
+    _spi.transfer(address);
+    _spi.transfer(value);
 
     digitalWrite(_csPin, HIGH);
-    SPI.endTransaction();
+    _spi.endTransaction();
 }
 
 uint8_t MCP2515::readStatus() {
-    SPI.beginTransaction(_spiSettings);
+    _spi.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
 
-    SPI.transfer(SPI_CMD_ST);
-    uint8_t val = SPI.transfer(0x00);
+    _spi.transfer(SPI_CMD_ST);
+    uint8_t val = _spi.transfer(0x00);
 
     digitalWrite(_csPin, HIGH);
     return val;
