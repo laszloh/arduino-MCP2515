@@ -14,7 +14,7 @@
 #include "ErrorCodes.hpp"
 
 #include <array>
-#include <cstdint>
+#include <algorithm>
 
 class CANPacket {
     friend class MCP2515;
@@ -34,16 +34,26 @@ public:
     explicit operator bool() const { return isValid(); }
 
     bool isValid() const { return (!_extended && _id < 0x7FF) || (_extended && _id < 0x1FFFFFFF); }
-    bool isExtended() const {return _extended; }
+    bool extended() const {return _extended; }
 
-    uint32_t getId() const { return _id; }
-    uint8_t getDlc() const { return _dlc; }
-    bool getRtr() const { return _rtr; }
-    std::array<uint8_t, 8> getData() const { return _data; }
+    uint32_t id() const { return _id; }
+    uint8_t dlc() const { return _dlc; }
+    bool rtr() const { return _rtr; }
+    const std::array<uint8_t, 8> &data() const { return _data; }
 
     MCP2515Error startStandard(uint16_t id, bool rtr = false) { return startPacket(id, false, rtr); }
     MCP2515Error startExtended(uint32_t id, bool rtr = false) { return startPacket(id, true, rtr); }
+    MCP2515Error startPacket(uint32_t id, bool extended, bool rtr) {
+        if( (!extended && id > 0x7FF) || (extended && id > 0x1FFFFFFF) )
+            return MCP2515Error::INVAL;
+        
+        _extended = extended;
+        _id = id;
+        _rtr = rtr;
 
+        return MCP2515Error::OK;
+    }
+    
     MCP2515Error writeData(uint8_t byte) { return writeData(&byte, sizeof(byte)); }
     MCP2515Error writeData(const uint8_t* buffer, size_t size) {
         if(_dlc > 8 || size > _data.size() - _dlc)
@@ -55,6 +65,7 @@ public:
         return MCP2515Error::OK;
     }
     MCP2515Error writeData(const char *str) { return writeData(reinterpret_cast<const uint8_t*>(str), strlen(str)); }
+    template<size_t N> MCP2515Error writeData(const std::array<uint8_t, N> &data) { return writeData(data.data(), N); }
 
 private:
     bool _extended : 1;
@@ -62,17 +73,6 @@ private:
     uint32_t _id{UINT32_MAX};
     std::array<uint8_t, 8> _data{0};
     uint8_t _dlc{0};
-
-    MCP2515Error startPacket(uint32_t id, bool extended, bool rtr) {
-        if( (!extended && id > 0x7FF) || (extended && id > 0x1FFFFFFF) )
-            return MCP2515Error::INVAL;
-        
-        _extended = extended;
-        _id = id;
-        _rtr = rtr;
-
-        return MCP2515Error::OK;
-    }
 };
 
 #endif
