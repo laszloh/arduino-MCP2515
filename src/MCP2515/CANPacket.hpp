@@ -33,7 +33,7 @@ public:
 
     explicit operator bool() const { return isValid(); }
 
-    bool isValid() const { return (!_extended && _id < 0x7FF) || (_extended && _id < 0x1FFFFFFF); }
+    bool isValid() const { return ((!_extended && _id < 0x7FF) || (_extended && _id < 0x1FFFFFFF)) && (_dlc < MAX_DATA_LENGTH); }
     bool extended() const {return _extended; }
 
     uint32_t id() const { return _id; }
@@ -45,7 +45,7 @@ public:
     MCP2515Error startExtended(uint32_t id, bool rtr = false) { return startPacket(id, true, rtr); }
     MCP2515Error startPacket(uint32_t id, bool extended, bool rtr) {
         if( (!extended && id > 0x7FF) || (extended && id > 0x1FFFFFFF) )
-            return MCP2515Error::INVAL;
+            return MCP2515Error::FAIL;
         
         _extended = extended;
         _id = id;
@@ -57,7 +57,7 @@ public:
     MCP2515Error writeData(uint8_t byte) { return writeData(&byte, sizeof(byte)); }
     MCP2515Error writeData(const uint8_t* buffer, size_t size) {
         if(_dlc > 8 || size > _data.size() - _dlc)
-            return MCP2515Error::OVERFLOW;
+            return MCP2515Error::FAIL;
 
         std::copy(buffer, buffer + size, _data.begin() + _dlc);
         _dlc += size;
@@ -67,11 +67,13 @@ public:
     MCP2515Error writeData(const char *str) { return writeData(reinterpret_cast<const uint8_t*>(str), strlen(str)); }
     template<size_t N> MCP2515Error writeData(const std::array<uint8_t, N> &data) { return writeData(data.data(), N); }
 
+    static constexpr uint8_t MAX_DATA_LENGTH = 8;
+
 private:
     bool _extended : 1;
     bool _rtr : 1;
     uint32_t _id{UINT32_MAX};
-    std::array<uint8_t, 8> _data{0};
+    std::array<uint8_t, MAX_DATA_LENGTH> _data{0};
     uint8_t _dlc{0};
 };
 

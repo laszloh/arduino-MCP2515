@@ -18,7 +18,7 @@ void setup() {
     Serial.println(F("Sends back all packets inverted on ID + 1"));
 
     // start the CAN bus at 250 kbps
-    if(!MCP.begin(MCP2515::CAN_250KBPS)) {
+    if(MCP.begin(MCP2515::CAN_250KBPS)) {
         Serial.println(F("Starting CAN failed!"));
         while(true) { }
     }
@@ -27,7 +27,10 @@ void setup() {
 void loop() {
     CANPacket rxPacket;
 
-    auto rxErr = MCP.receivePacket(rxPacket);
+    if(!MCP.checkMessage())
+        return;
+
+    auto rxErr = MCP.readMessage(rxPacket);
     if(rxErr == MCP2515Error::OK) {
         // packet received
         Serial.printf(F("Received packet, id: 0x%08x, extended: %d, dlc: %d"), rxPacket.id(),
@@ -41,12 +44,12 @@ void loop() {
                 txPacket.writeData(rxData[i]^0xFF);
         }
 
-        auto txErr = MCP.writePacket(txPacket);
+        auto txErr = MCP.sendMessage(txPacket);
         if(txErr) {
             Serial.print(F("Tx Error: "));
             Serial.println(txErr.f_str());
         }
-    } else if(rxErr != MCP2515Error::NOENT) {
+    } else if(rxErr != MCP2515Error::NOMSG) {
         Serial.print(F("Rx Error: "));
         Serial.println(rxErr.f_str());
     }

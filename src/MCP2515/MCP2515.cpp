@@ -8,29 +8,7 @@
 #include "MCP2515.h"
 #include "CANPacket.hpp"
 
-#define SPI_CMD_RST 0x0C
-#define SPI_CMD_RD 0x03
-#define SPI_CMD_WR 0x02
-#define SPI_CMD_ST 0xA0
-#define SPI_CMD_RXST 0xB0
-#define SPI_CMD_BMD 0x05 
-
-#define REG_BFPCTRL 0x0C
-#define REG_TXRTSCTRL 0x0D
-
-#define REG_CANSTAT 0x0E
-#define REG_CANCTRL 0x0F
-
-#define REG_TX_ERROR_COUNTER 0x1C
-#define REG_RX_ERROR_COUNTER 0x1D
-
-#define REG_CNF3 0x28
-#define REG_CNF2 0x29
-#define REG_CNF1 0x2A
-
-#define REG_CANINTE 0x2B
-#define REG_CANINTF 0x2C
-#define REG_EFLG 0x2D
+using namespace internal; 
 
 #define FLAG_RXnIE(n) (0x01 << n)
 #define FLAG_RXnIF(n) (0x01 << n)
@@ -87,47 +65,42 @@
 #define FLAG_ST_TX2REQ  0x40
 #define FLAG_ST_TX2IF   0x80
 
-MCP2515::MCP2515(int cs, CAN_CLOCK clk, SPIClass &spi) :
+MCP2515::MCP2515(int cs, CanClock clk, SPIClass &spi) :
     _csPin(cs),
     _clockFrequency(clk),
     _spi(spi)
 {
 }
 
-MCP2515Error MCP2515::begin(CAN_SPEED baudRate) {
+MCP2515Error MCP2515::begin(CanSpeed baudRate) {
     pinMode(_csPin, OUTPUT);
-
     _spi.begin();
-    reset();
-
-    writeRegister(REG_CANCTRL, 0x80);
-    if (readRegister(REG_CANCTRL) != 0x80) {
-        return MCP2515Error::BADF;
-    }
-
-    _mcp_cnf_frequency cnf = getCnfForClockFrequency(_clockFrequency, baudRate);
-    if (!cnf)
-        return MCP2515Error::INVAL;
-
-    writeRegister(REG_CNF1, cnf.one);
-    writeRegister(REG_CNF2, cnf.two);
-    writeRegister(REG_CNF3, cnf.three);
-
-    writeRegister(REG_CANINTE, (FLAG_RXnIE(1) | FLAG_RXnIE(0)));
-    writeRegister(REG_BFPCTRL, 0x00);
-    writeRegister(REG_TXRTSCTRL, 0x00);
-    writeRegister(REG_RXBnCTRL(0), 0x00);
-    writeRegister(REG_RXBnCTRL(1), 0x00);
-
+    
+    if(reset())
+        return MCP2515Error::FAILINIT;
+    if(setBitrate(baudRate, _clockFrequency))
+        return MCP2515Error::FAILINIT;
     return setNormalMode();
 }
 
 void MCP2515::end() {
     reset();
+    setSleepMode();
 }
 
 MCP2515::ErrorFlags MCP2515::getErrorFlags() {
-    return ErrorFlags{readRegister(REG_EFLG)};
+    uint16_t flags = readRegister(MCP_EFLG);
+    
+    uint8_t canIntF = readRegister(MCP_CANINTF);
+    flags |= (canIntF & CANINTF_MERRF) ? ErrorFlags::MCP_EFLAG_MERR : 0x00;
+    flags |= (canIntF & CANINTF_ERRIF) ? ErrorFlags::MCP_EFLAG_ERR : 0x00;
+
+    return ErrorFlags{flags};
+}
+
+void MCP2515::clearErrorFlags() {
+    modifyRegister(MCP_EFLG, EFLG_RX1OVR | EFLG_RX0OVR, 0x00);
+    modifyRegister(MCP_CANINTF, CANINTF_MERRF | CANINTF_ERRIF, 0x00);
 }
 
 void MCP2515::setSPIFrequency(uint32_t frequency) {
@@ -158,10 +131,10 @@ MCP2515Error MCP2515::setMask(const MCP2515_CAN_MASK num, bool extended, uint32_
         sidl = (canfilter & 0x07) << 5;
     }
 
-    writeRegister(REG_RXMnEID0(num), eid0);
-    writeRegister(REG_RXMnEID8(num), eid8);
-    writeRegister(REG_RXMnSIDH(num), sidh);
-    writeRegister(REG_RXMnSIDL(num), sidl);
+    setRegister(REG_RXMnEID0(num), eid0);
+    setRegister(REG_RXMnEID8(num), eid8);
+    setRegister(REG_RXMnSIDH(num), sidh);
+    setRegister(REG_RXMnSIDL(num), sidl);
 
     return setNormalMode();
 }
@@ -190,397 +163,472 @@ MCP2515Error MCP2515::setFilter(const MCP2515_CAN_RXF num, bool extended, uint32
         sidl = (canfilter & 0x07) << 5;
     }
 
-    writeRegister(REG_RXFnEID0(num), eid0);
-    writeRegister(REG_RXFnEID8(num), eid8);
-    writeRegister(REG_RXFnSIDH(num), sidh);
-    writeRegister(REG_RXFnSIDL(num), sidl);
+    setRegister(REG_RXFnEID0(num), eid0);
+    setRegister(REG_RXFnEID8(num), eid8);
+    setRegister(REG_RXFnSIDH(num), sidh);
+    setRegister(REG_RXFnSIDL(num), sidl);
 
     return setNormalMode();
 }
 
-MCP2515_MODES MCP2515::getMode() {
-    return static_cast<MCP2515_MODES>(readRegister(REG_CANCTRL) >> 5);
+MCP2515::CanModes MCP2515::getMode() {
+    return static_cast<CanModes>(readRegister(MCP_CANSTAT) & CANSTAT_OPMOD);
 }
 
 MCP2515Error MCP2515::setConfigMode() {
-    return setMode(MCP2515_MODES::CONFIG);
+    return setMode(CanctrlReqopMode::CANCTRL_REQOP_CONFIG);
 }
 
 MCP2515Error MCP2515::setListenMode() {
-    return setMode(MCP2515_MODES::LISTEN);
+    return setMode(CanctrlReqopMode::CANCTRL_REQOP_LISTENONLY);
 }
 
 MCP2515Error MCP2515::setLoopbackMode() {
-    return setMode(MCP2515_MODES::LOOPBACK);
+    return setMode(CanctrlReqopMode::CANCTRL_REQOP_LOOPBACK);
 }
 
 MCP2515Error MCP2515::setSleepMode() {
-    auto err = setMode(MCP2515_MODES::SLEEP);
-    if(err)
-        return err;
-
-    // Block until CAN controller goes into sleep.
-    // "These bits should be read after sending the SLEEP command to the MCP2515.
-    // The MCP2515 is active and has not yet entered Sleep mode until these bits
-    // indicate that Sleep mode has been entered."
-    while ((readRegister(REG_CANCTRL) & 0xE0) != 0x20) {
-        yield();
-    }
-
-    return MCP2515Error::OK;
+    return setMode(CanctrlReqopMode::CANCTRL_REQOP_SLEEP);
 }
 
 MCP2515Error MCP2515::setNormalMode() {
-    return setMode(MCP2515_MODES::NORMAL);
+    return setMode(CanctrlReqopMode::CANCTRL_REQOP_NORMAL);
 }
 
-MCP2515Error MCP2515::setMode(MCP2515_MODES mode) {
-    uint8_t raw = static_cast<uint8_t>(mode) << 5;
-    modifyRegister(REG_CANCTRL, 0xE0, raw);
-    if( (readRegister(REG_CANCTRL) & 0xE0) != raw)
-        return MCP2515Error::BADF;
+MCP2515Error MCP2515::setMode(const CanctrlReqopMode mode) {
+    modifyRegister(MCP_CANCTRL, CANCTRL_REQOP, mode);
+
+    uint32_t timeout = millis() + 10;
+    while(millis() < timeout) {
+        if( (readRegister(MCP_CANSTAT) & CANSTAT_OPMOD) == mode) 
+            return MCP2515Error::OK;
+    }
+    return MCP2515Error::FAIL;
+}
+
+MCP2515Error MCP2515::setClockOut(const CanClkOut divisor) {
+    if(divisor == CLKOUT_DISABLE) {
+        // disable CLKEN
+        modifyRegister(MCP_CANCTRL, CANCTRL_CLKEN, 0x00);
+
+        // enable SOF for CLKOUT pin
+        modifyRegister(MCP_CNF3, CNF3_SOF, CNF3_SOF);
+        return MCP2515Error::OK;
+    }
+
+    // set prescaler
+    modifyRegister(MCP_CANCTRL, CANCTRL_CLKPRE, divisor);
+
+    // enable clock out
+    modifyRegister(MCP_CANCTRL, CANCTRL_CLKEN, CANCTRL_CLKEN);
+
+    // disable SOF for clockout pin
+    modifyRegister(MCP_CNF3, CNF3_SOF, 0x00);
     return MCP2515Error::OK;
 }
 
 MCP2515Error MCP2515::setWakeupFilter(bool enable) {
-    uint8_t envalue = (enable ? 0x40 : 0);
-    modifyRegister(REG_CNF3, 0x40, envalue);
-
-    if ((readRegister(REG_CNF3) & 0x40) != envalue) {
-        return MCP2515Error::BADF;
-    }
+    uint8_t envalue = (enable ? CNF3_WAKFIL : 0x00);
+    modifyRegister(MCP_CNF3, CNF3_WAKFIL, envalue);
 
     return MCP2515Error::OK;
 }
 
 MCP2515Error MCP2515::setOneShotMode(bool enable) {
-    uint8_t envalue = (enable ? 0x08 : 0);
-    modifyRegister(REG_CANCTRL, 0x08, envalue);
-
-    if ((readRegister(REG_CANCTRL) & 0x08) != envalue) {
-        return MCP2515Error::BADF;
-    }
-
-    _oneShotMode = enable;
-    return MCP2515Error::OK;
-}
-
-MCP2515Error MCP2515::receivePacket(CANPacket &packet) {
-    int rxBuf;
-    uint8_t intf = readStatus();
-
-    if (intf & FLAG_ST_RX0IF) {
-        rxBuf = 0;
-    } else if (intf & FLAG_ST_RX1IF) {
-        rxBuf = 1;
-    } else {
-        return MCP2515Error::NOENT;
-    }
-
-    packet._extended = (readRegister(REG_RXBnSIDL(rxBuf)) & FLAG_IDE ? true : false);
-
-    uint8_t sidh = readRegister(REG_RXBnSIDH(rxBuf));
-    uint8_t sidl = readRegister(REG_RXBnSIDL(rxBuf));
-
-    uint32_t idA = ((sidh << 3) & 0x07F8) | ((sidl >> 5) & 0x07);
-
-    if (packet._extended) {
-        uint32_t idB = (((uint32_t)(sidl & 0x03) << 16) & 0x30000) | ((readRegister(REG_RXBnEID8(rxBuf)) << 8) & 0xFF00) | readRegister(REG_RXBnEID0(rxBuf));
-
-        packet._id = (idA << 18) | idB;
-        packet._rtr = (readRegister(REG_RXBnDLC(rxBuf)) & FLAG_RTR ? true : false);
-    } else {
-        packet._id = idA;
-        packet._rtr = (sidl & FLAG_SRR ? true : false);
-    }
-
-    packet._dlc = readRegister(REG_RXBnDLC(rxBuf)) & 0x0F;
-
-    if (!packet._rtr) {
-        // READ RX BUFFER
-        _spi.beginTransaction(_spiSettings);
-        digitalWrite(_csPin, LOW);
-
-        _spi.transfer((0x92 | (rxBuf << 2)));
-
-        for (uint8_t i = 0; i < packet._dlc; i++) {
-            packet.writeData(_spi.transfer(0x00));
-        }
-
-        digitalWrite(_csPin, HIGH);
-        _spi.endTransaction();
-    }
-    modifyRegister(REG_CANINTF, FLAG_RXnIF(rxBuf), 0x00);
+    uint8_t envalue = (enable ? CANCTRL_OSM : 0x00);
+    modifyRegister(MCP_CANCTRL, CANCTRL_OSM, envalue);
 
     return MCP2515Error::OK;
 }
 
-size_t MCP2515::getTxQueueLength() {
-#ifdef MCP2515_DISABLE_ASYNC_TX_QUEUE
-    return 0;
-#else
-    return _canpacketTxQueue.size();
-#endif
+MCP2515Error MCP2515::readMessage(RXBn rxbn, CANPacket &packet) {
+    const struct RxBnRegs *rxb = &RXB[rxbn];
+
+    uint8_t headerBuf[5];
+    readRegisters(rxb->SIDH, headerBuf, sizeof(headerBuf));
+    uint32_t id = (headerBuf[MCP_SIDH] << 3) + (headerBuf[MCP_SIDL] >> 5);
+
+    if(headerBuf[MCP_SIDL] & TXB_EXIDE_MASK) {
+        id = (id << 2) + (headerBuf[MCP_SIDL] & 0x03);
+        id = (id << 8) + headerBuf[MCP_EID8];
+        id = (id << 8) + headerBuf[MCP_EID0];
+        packet._extended = true;
+    }
+    packet._id = id;
+
+    packet._dlc = headerBuf[MCP_DLC] & DLC_MASK;
+    if(packet._dlc > CANPacket::MAX_DATA_LENGTH)
+        return MCP2515Error::FAIL;
+    
+    packet._rtr = headerBuf[MCP_DLC] & DLC_MASK;
+
+    readRegisters(rxb->DATA, packet._data.data(), packet._dlc);
+
+    modifyRegister(MCP_CANINTF, rxb->CANINTF_RXnIF, 0);
+
+    return MCP2515Error::OK;
 }
 
-void MCP2515::processTxQueue() {
-#ifndef MCP2515_DISABLE_ASYNC_TX_QUEUE
-    if (_canpacketTxQueue.empty()) {
-        return;
-    }
-
-    if(getFreeTxBuffer() < 0) {
-        // All TX buffers have packets pending
-        return;
-    }
-
-    // send packet
-    const CANPacket &packet = _canpacketTxQueue.front();
-
-    auto err = writePacket(packet, true);
-    if(!err) {
-        // send was successful
-        _canpacketTxQueue.pop();
-    }
-#endif
+bool MCP2515::checkMessage() {
+    return getStatus() & STAT_RXIF_MASK;
 }
 
-MCP2515Error MCP2515::writePacket(const CANPacket &packet, bool nowait) {
-    if (!packet) {
-        return MCP2515Error::INVAL;
-    }
-    // MCP controller is NOT in normal or loopback mode
-    uint8_t canctrl = readRegister(REG_CANCTRL) & 0xE0;
-    if (canctrl != 0x00 && canctrl != 0x40) {
-        return MCP2515Error::COMM;
-    }
+MCP2515Error MCP2515::readMessage(CANPacket &packet) {
+    MCP2515Error rc;
+    uint8_t stat = getStatus();
 
-    int8_t txBuf = getFreeTxBuffer();
-    if(txBuf < 0) {
-        // there were no empty tx buffers, push packet into queue
-#ifndef MCP2515_DISABLE_ASYNC_TX_QUEUE
-        if(getTxQueueLength() > MCP2515_CANPACKET_TX_QUEUE_SIZE) {
-            return MCP2515Error::OVERFLOW;
-        }
+    if(stat & STAT_RX0IF)
+        rc = readMessage(RXB0, packet);
+    else if(stat & STAT_RX1IF)
+        rc = readMessage(RXB1, packet);
+    else
+        rc = MCP2515Error::NOMSG;
 
-        _canpacketTxQueue.push(packet);
-        return MCP2515Error::OK;
-#else
-        return MCP2515Error::AGAIN;
-#endif
-    }
+    return rc;
+}
 
-    // we have an empty buffer, write it
-    noInterrupts();
-
-    // Clear TxControl register
-    writeRegister(REG_TXBnCTRL(txBuf), 0x00);
-
-    // Clear abort bit (might have been set previously)
-    modifyRegister(REG_CANCTRL, 0x10, 0x00);
+MCP2515Error MCP2515::sendMessage(TXBn txbn, const CANPacket &packet) {
+    const struct TxBnRegs *txbuf = &TXB[txbn];
 
     auto data = serialize(packet);
+    setRegisters(txbuf->SIDH, data.data(), 5 + packet._dlc);
+    modifyRegister(txbuf->CTRL, TXB_TXREQ, TXB_TXREQ);
 
-    // write the raw data directly to the tx buffer
-    writeRegisters(REG_TXBnSIDH(txBuf), data, packet._dlc + 5);
-
-    // trigger tx ready for this buffer
-    modifyRegister(REG_TXBnCTRL(txBuf), FLAG_TXREQ, FLAG_TXREQ);
-
-    interrupts();
-
-    if (nowait) {
-        return MCP2515Error::OK;
-    }
-
-    return handleMessageTransmit(txBuf, true);
+    return MCP2515Error::OK;
 }
 
-MCP2515Error MCP2515::handleMessageTransmit(int txBuf, bool cond) {
-    MCP2515Error status = MCP2515Error::AGAIN;
+MCP2515Error MCP2515::sendMessage(const CANPacket &packet) {
+    if (!packet)
+        return MCP2515Error::FAILTX;
 
-    do {
-        uint8_t txbctrl = readRegister(REG_TXBnCTRL(txBuf));
+    MCP2515Error rc;
 
-        if (txbctrl & FLAG_TXABTF) {
-            modifyRegister(REG_CANCTRL, 0x10, 0x00);
-            status = MCP2515Error::INTR;
-            break;
-        } else if (txbctrl & FLAG_TXERR) {
-            status = MCP2515Error::BADF;
-            break;
-        } else if ((txbctrl & FLAG_TXREQ) == 0) {
-            status = MCP2515Error::OK;
-            break;
-        }
-        yield();
-
-        if (cond) {
-            delayMicroseconds(10);
-        }
-    } while (cond);
-
-    if (status != MCP2515Error::AGAIN && (_oneShotMode || status != MCP2515Error::BADF)) {
-        modifyRegister(REG_TXBnCTRL(txBuf), FLAG_TXREQ, 0x00);
-        modifyRegister(REG_CANINTF, FLAG_TXnIF(txBuf), 0x00);
-    }
-
-    return status;
+    uint8_t stat = getStatus();
+    if(!(stat & STAT_TXREQ0))
+        rc = sendMessage(TXB0, packet);
+    else if(!(stat & STAT_TXREQ1))
+        rc = sendMessage(TXB1, packet);
+    else if(!(stat & STAT_TXREQ2))
+        rc = sendMessage(TXB2, packet);
+    else
+        rc = MCP2515Error::ALLTXBUSY;
+    
+    return rc;
 }
 
-void MCP2515::handleInterrupt() {
-    uint8_t intf = readRegister(REG_CANINTF);
-
-    if (intf == 0) {
-        return;
-    }
-
-    // process receive queue
-    if (intf & (FLAG_RXnIF(0) | FLAG_RXnIF(1))) {
-        CANPacket packet;
-        while(receivePacket(packet) != MCP2515Error::NOENT) {
-            if(packet && _onReceivePacket)
-                _onReceivePacket(packet);
-        }
-    }
-
-    // process tx queue
-    if(intf & (FLAG_TXnIF(0) | FLAG_TXnIF(1) | FLAG_TXnIF(2)))
-        processTxQueue();
-
-    // Clear all TXnIF + MERRF bits
-    modifyRegister(REG_CANINTF, 0x9C, 0x00);
-}
-
-MCP2515::_mcp_cnf_frequency MCP2515::getCnfForClockFrequency(CAN_CLOCK clock, CAN_SPEED baudRate) {
-    static const _mcp_cnf_frequency configs [][CAN_SPEED::MCP_SPEED_max] PROGMEM = {
-        { // 8MHz
-            {0x00, 0x80, 0x00},     // CAN_1000KBPS
-            {0x00, 0x90, 0x02},     // CAN_500KBPS
-            {0x00, 0xB1, 0x05},     // CAN_250KBPS
-            {0x00, 0xB4, 0x06},     // CAN_200KBPS
-            {0x01, 0xB1, 0x05},     // CAN_125KBPS
-            {0x01, 0xB4, 0x06},     // CAN_100KBPS
-            {0x01, 0xBF, 0x07},     // CAN_80KBPS
-            {0x03, 0xB4, 0x06},     // CAN_50KBPS
-            {0x03, 0xBF, 0x07},     // CAN_40KBPS
-            {0x07, 0xBF, 0x07},     // CAN_20KBPS
-            {0x0F, 0xBF, 0x07},     // CAN_10KBPS
-            {0x1F, 0xBF, 0x07},     // CAN_5KBPS
-        },
-        { // 16 MHz
-            {0x00, 0xD0, 0x82},     // CAN_1000KBPS
-            {0x00, 0xF0, 0x86},     // CAN_500KBPS
-            {0x41, 0xF1, 0x85},     // CAN_250KBPS
-            {0x01, 0xFA, 0x87},     // CAN_200KBPS
-            {0x03, 0xF0, 0x86},     // CAN_125KBPS
-            {0x03, 0xFA, 0x87},     // CAN_100KBPS
-            {0x03, 0xFF, 0x87},     // CAN_80KBPS
-            {0x07, 0xFA, 0x87},     // CAN_50KBPS
-            {0x07, 0xFF, 0x87},     // CAN_40KBPS
-            {0x0F, 0xFF, 0x87},     // CAN_20KBPS
-            {0x1F, 0xFF, 0x87},     // CAN_10KBPS
-            {0x3F, 0xFF, 0x87},     // CAN_5KBPS
-        }
-    };
-    if (baudRate > CAN_SPEED::MCP_SPEED_max || clock > CAN_CLOCK::MCP_CLOCK_max)
-        return {};
-    return _mcp_cnf_frequency::copy_P(&configs[clock][baudRate]);
-}
-
-int8_t MCP2515::getFreeTxBuffer() {
-    uint8_t status = readStatus();
-
-    // find the first free buffer
-    if(!(status & FLAG_ST_TX0REQ))
-        return 0;
-    else if(!(status & FLAG_ST_TX1REQ))
-        return 1;
-    else if(!(status & FLAG_ST_TX2REQ))
-        return 2;
-    else 
-        return -1;
-}
-
-void MCP2515::reset() {
+void MCP2515::spiEnable() {
     _spi.beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
+}
 
-    _spi.transfer(SPI_CMD_RST);
-
+void MCP2515::spiDisable() {
     digitalWrite(_csPin, HIGH);
     _spi.endTransaction();
+}
+
+MCP2515Error MCP2515::reset() {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_READ);
+    spiDisable();
 
     delay(10);
+
+    // clearing all tx buffers
+    uint8_t zeros[14] = {};
+    setRegisters(MCP_TXB0CTRL, zeros, sizeof(zeros));
+    setRegisters(MCP_TXB1CTRL, zeros, sizeof(zeros));
+    setRegisters(MCP_TXB2CTRL, zeros, sizeof(zeros));
+
+    setRegister(MCP_RXB0CTRL, 0x00);
+    setRegister(MCP_RXB1CTRL, 0x00);
+
+    setRegister(MCP_CANINTE, CANINTF_RX0IF | CANINTF_RX1IF | CANINTF_ERRIF | CANINTF_MERRF);
+
+    modifyRegister(MCP_RXB0CTRL, RXB_CTRL_RXM_MASK | RXB_0_CTRL_BUKT, RXB_CTRL_RXM_STDEXT | RXB_0_CTRL_BUKT);
+    modifyRegister(MCP_RXB1CTRL, RXB_CTRL_RXM_MASK, RXB_CTRL_RXM_STDEXT);
+
+    return MCP2515Error::OK;
 }
 
-uint8_t MCP2515::readRegister(uint8_t address) {
-    _spi.beginTransaction(_spiSettings);
-    digitalWrite(_csPin, LOW);
-
-    _spi.transfer(SPI_CMD_RD);
+uint8_t MCP2515::readRegister(const uint8_t address) {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_READ);
     _spi.transfer(address);
     uint8_t value = _spi.transfer(0x00);
-
-    digitalWrite(_csPin, HIGH);
-    _spi.endTransaction();
+    spiDisable();
 
     return value;
 }
 
-void MCP2515::modifyRegister(uint8_t address, uint8_t mask, uint8_t value) {
-    _spi.beginTransaction(_spiSettings);
-    digitalWrite(_csPin, LOW);
+void MCP2515::readRegisters(const uint8_t address, uint8_t val[], const uint8_t n) {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_READ);
+    _spi.transfer(address);
+    // MCP2515 has auto increment of address pointer
+    for(uint8_t i = 0; i < n; i++) {
+        val[i] = _spi.transfer(0x00);
+    }
+    spiDisable();
+}
 
-    _spi.transfer(SPI_CMD_BMD);
+void MCP2515::setRegister(const uint8_t address, const uint8_t value) {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_WRITE);
+    _spi.transfer(address);
+    _spi.transfer(value);
+    spiDisable();
+}
+
+void MCP2515::setRegisters(const uint8_t address, const uint8_t val[], const uint8_t n) {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_WRITE);
+    _spi.transfer(address);
+    // MCP2515 has auto increment of address pointer
+    for(uint8_t i = 0; i < n; i++) {
+        _spi.transfer(val[i]);
+    }
+    spiDisable();
+}
+
+void MCP2515::modifyRegister(const uint8_t address, const uint8_t mask, const uint8_t value) {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_BITMOD);
     _spi.transfer(address);
     _spi.transfer(mask);
     _spi.transfer(value);
-
-    digitalWrite(_csPin, HIGH);
-    _spi.endTransaction();
+    spiDisable();
 }
 
-void MCP2515::writeRegister(uint8_t address, uint8_t value) {
-    _spi.beginTransaction(_spiSettings);
-    digitalWrite(_csPin, LOW);
+uint8_t MCP2515::getStatus() {
+    spiEnable();
+    _spi.transfer(INSTRUCTION_READ_STATUS);
+    uint8_t ret = _spi.transfer(0x00);
+    spiDisable();
 
-    _spi.transfer(SPI_CMD_WR);
-    _spi.transfer(address);
-    _spi.transfer(value);
-
-    digitalWrite(_csPin, HIGH);
-    _spi.endTransaction();
-}
-
-uint8_t MCP2515::readStatus() {
-    _spi.beginTransaction(_spiSettings);
-    digitalWrite(_csPin, LOW);
-
-    _spi.transfer(SPI_CMD_ST);
-    uint8_t val = _spi.transfer(0x00);
-
-    digitalWrite(_csPin, HIGH);
-    return val;
+    return ret;
 }
 
 std::array<uint8_t, 8 + 5> MCP2515::serialize(const CANPacket &packet) {
     std::array<uint8_t, 8+5> dat;
 
+    uint16_t canid = packet._id & 0x0FFFF;
     if(packet._extended) {
-        dat[0] = (packet._id >> 21);
-        dat[1] = ((((packet._id >> 18) & 0x07) << 5) | FLAG_EXIDE | ((packet._id >> 16) & 0x03));
-        dat[2] = ((packet._id >> 8) & 0xFF);
-        dat[3] = (packet._id & 0xFF);
+        dat[MCP_EID0] = canid & 0xFF;
+        dat[MCP_EID8] = canid >> 8;
+        canid = packet._id >> 16;
+        dat[MCP_SIDL] = canid & 0x03;
+        dat[MCP_SIDL] += ((canid & 0x1C) << 3);
+        dat[MCP_SIDL] |= TXB_EXIDE_MASK;
+        dat[MCP_SIDH] = canid >> 5;
     } else {
-        dat[0] = (packet._id >> 3);
-        dat[1] = (packet._id << 5);
-        dat[2] = 0x00;
-        dat[3] = 0x00;
+        dat[MCP_SIDH] = canid >> 3;
+        dat[MCP_SIDL] = ((canid & 0x07) << 5);
+        dat[MCP_EID0] = 0x00;
+        dat[MCP_EID8] = 0x00;
     }
 
-    dat[4] = packet._dlc;
+    dat[MCP_DLC] = packet._dlc;
 
-    std::copy(packet._data.begin(), packet._data.begin() + packet._dlc, dat.begin() + 5);
+    std::copy(packet._data.begin(), packet._data.begin() + packet._dlc, dat.begin() + MCP_DATA);
     return dat;
+}
+
+MCP2515Error MCP2515::setBitrate(CanSpeed speed, CanClock clock) {
+    auto err = setConfigMode();
+    if(err)
+        return err;
+
+    mcp_baud_cfg cfg{};
+    switch(clock){
+        case CanClock::MCP_8MHZ :
+            switch(speed) {
+                case CAN_1000KBPS:
+                    cfg = MCP_8MHZ_1000KBPS;
+                    break;
+                case CAN_500KBPS:
+                    cfg = MCP_8MHZ_500KBPS;
+                    break;
+                case CAN_250KBPS:
+                    cfg = MCP_8MHZ_250KBPS;
+                    break;
+                case CAN_200KBPS:
+                    cfg = MCP_8MHZ_200KBPS;
+                    break;
+                case CAN_125KBPS:
+                    cfg = MCP_8MHZ_125KBPS;
+                    break;
+                case CAN_100KBPS:
+                    cfg = MCP_8MHZ_100KBPS;
+                    break;
+                case CAN_80KBPS:
+                    cfg = MCP_8MHZ_80KBPS;
+                    break;
+                case CAN_50KBPS:
+                    cfg = MCP_8MHZ_50KBPS;
+                    break;
+                case CAN_40KBPS:
+                    cfg = MCP_8MHZ_40KBPS;
+                    break;
+                case CAN_33KBPS:
+                    cfg = MCP_8MHZ_33K3BPS;
+                    break;
+                case CAN_31K25BPS:
+                    cfg = MCP_8MHZ_31K25BPS;
+                    break;
+                case CAN_20KBPS:
+                    cfg = MCP_8MHZ_20KBPS;
+                    break;
+                case CAN_10KBPS:
+                    cfg = MCP_8MHZ_10KBPS;
+                    break;
+                case CAN_5KBPS:
+                    cfg = MCP_8MHZ_5KBPS;
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case CanClock::MCP_12MHZ:
+            switch(speed) {
+                case CAN_1000KBPS:
+                    cfg = MCP_12MHZ_1000KBPS;
+                    break;
+                case CAN_500KBPS:
+                    cfg = MCP_12MHZ_500KBPS;
+                    break;
+                case CAN_250KBPS:
+                    cfg = MCP_12MHZ_250KBPS;
+                    break;
+                case CAN_200KBPS:
+                    cfg = MCP_12MHZ_200KBPS;
+                    break;
+                case CAN_125KBPS:
+                    cfg = MCP_12MHZ_125KBPS;
+                    break;
+                case CAN_100KBPS:
+                    cfg = MCP_12MHZ_100KBPS;
+                    break;
+                case CAN_80KBPS:
+                    cfg = MCP_12MHZ_80KBPS;
+                    break;
+                case CAN_50KBPS:
+                    cfg = MCP_12MHZ_50KBPS;
+                    break;
+                case CAN_40KBPS:
+                    cfg = MCP_12MHZ_40KBPS;
+                    break;
+                case CAN_33KBPS:
+                    cfg = MCP_12MHZ_33K3BPS;
+                    break;
+                case CAN_20KBPS:
+                    cfg = MCP_12MHZ_20KBPS;
+                    break;
+                case CAN_10KBPS:
+                    cfg = MCP_12MHZ_10KBPS;
+                    break;
+                case CAN_5KBPS:
+                    cfg = MCP_12MHZ_5KBPS;
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case CanClock::MCP_16MHZ:
+            switch(speed) {
+                case CAN_1000KBPS:
+                    cfg = MCP_16MHZ_1000KBPS;
+                    break;
+                case CAN_500KBPS:
+                    cfg = MCP_16MHZ_500KBPS;
+                    break;
+                case CAN_250KBPS:
+                    cfg = MCP_16MHZ_250KBPS;
+                    break;
+                case CAN_200KBPS:
+                    cfg = MCP_16MHZ_200KBPS;
+                    break;
+                case CAN_125KBPS:
+                    cfg = MCP_16MHZ_125KBPS;
+                    break;
+                case CAN_100KBPS:
+                    cfg = MCP_16MHZ_100KBPS;
+                    break;
+                case CAN_80KBPS:
+                    cfg = MCP_16MHZ_80KBPS;
+                    break;
+                case CAN_83K3BPS:
+                    cfg = MCP_16MHZ_83K3BPS;
+                    break;
+                case CAN_50KBPS:
+                    cfg = MCP_16MHZ_50KBPS;
+                    break;
+                case CAN_40KBPS:
+                    cfg = MCP_16MHZ_40KBPS;
+                    break;
+                case CAN_33KBPS:
+                    cfg = MCP_16MHZ_33K3BPS;
+                    break;
+                case CAN_20KBPS:
+                    cfg = MCP_16MHZ_20KBPS;
+                    break;
+                case CAN_10KBPS:
+                    cfg = MCP_16MHZ_10KBPS;
+                    break;
+                case CAN_5KBPS:
+                    cfg = MCP_16MHZ_5KBPS;
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case CanClock::MCP_20MHZ:
+            switch(speed) {
+                case CAN_1000KBPS:
+                    cfg = MCP_20MHZ_1000KBPS;
+                    break;
+                case CAN_500KBPS:
+                    cfg = MCP_20MHZ_500KBPS;
+                    break;
+                case CAN_250KBPS:
+                    cfg = MCP_20MHZ_250KBPS;
+                    break;
+                case CAN_200KBPS:
+                    cfg = MCP_20MHZ_200KBPS;
+                    break;
+                case CAN_125KBPS:
+                    cfg = MCP_20MHZ_125KBPS;
+                    break;
+                case CAN_100KBPS:
+                    cfg = MCP_20MHZ_100KBPS;
+                    break;
+                case CAN_83K3BPS:
+                    cfg = MCP_20MHZ_83K3BPS;
+                    break;
+                case CAN_80KBPS:
+                    cfg = MCP_20MHZ_80KBPS;
+                    break;
+                case CAN_50KBPS:
+                    cfg = MCP_20MHZ_50KBPS;
+                    break;
+                case CAN_40KBPS:
+                    cfg = MCP_20MHZ_40KBPS;
+                    break;
+                case CAN_33KBPS:
+                    cfg = MCP_20MHZ_33K3BPS;
+                    break;
+                default:
+                    break;
+            }
+            break;
+    }
+
+    if(cfg) {
+        setRegister(MCP_CNF1, cfg.cnf1);
+        setRegister(MCP_CNF2, cfg.cnf2);
+        setRegister(MCP_CNF3, cfg.cnf3);
+
+        return MCP2515Error::OK;
+    } else {
+        return MCP2515Error::FAIL;
+    }
 }

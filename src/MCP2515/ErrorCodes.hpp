@@ -14,15 +14,11 @@ class MCP2515Error {
 public:
     enum Code{
         OK = 0,
-        PERM,
-        NOENT,
-        INTR,
-        BADF,
-        AGAIN,
-        BUSY,
-        INVAL,
-        COMM,
-        OVERFLOW
+        FAIL,
+        ALLTXBUSY,
+        FAILINIT,
+        FAILTX,
+        NOMSG,
     };
 
     MCP2515Error() = default;
@@ -60,31 +56,27 @@ public:
 
     const char * c_str() const {
         static constexpr const char *messages[] = {
-            "OK", "PERM", "NOENT", "INTR", "BADF",
-            "AGAIN", "BUSY", "INVAL", "COMM", "OVERFLOW"
+            "OK", "FAIL", "ALLTXBUSY", "FAILINIT", "FAILTX",
+            "NOMSG"
         };
         Code c = _code;
         if(_code >= sizeof(messages) / sizeof(messages[0]))
-            c = INVAL;
+            c = FAIL;
         return messages[c];
     }
 
     const __FlashStringHelper* f_str() const {
         static const char s0[] PROGMEM = "OK";
-        static const char s1[] PROGMEM = "PERM";
-        static const char s2[] PROGMEM = "NOENT";
-        static const char s3[] PROGMEM = "INTR";
-        static const char s4[] PROGMEM = "BADF";
-        static const char s5[] PROGMEM = "AGAIN";
-        static const char s6[] PROGMEM = "BUSY";
-        static const char s7[] PROGMEM = "INVAL";
-        static const char s8[] PROGMEM = "COMM";
-        static const char s9[] PROGMEM = "OVERFLOW";
-        static const char* const messages[] PROGMEM = {s0, s1, s2, s3, s4, s5, s6, s7, s8, s9};
+        static const char s1[] PROGMEM = "FAIL";
+        static const char s2[] PROGMEM = "ALLTXBUSY";
+        static const char s3[] PROGMEM = "FAILINIT";
+        static const char s4[] PROGMEM = "FAILTX";
+        static const char s5[] PROGMEM = "NOMSG";
+        static const char* const messages[] PROGMEM = {s0, s1, s2, s3, s4, s5};
  
         Code c = _code;
         if(_code >= sizeof(messages) / sizeof(messages[0]))
-            c = INVAL;
+            c = FAIL;
         return reinterpret_cast<const __FlashStringHelper*>(pgm_read_word(&(messages[c])));
     }
 
