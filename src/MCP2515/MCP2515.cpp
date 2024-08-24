@@ -78,7 +78,7 @@ MCP2515Error MCP2515::begin(CanSpeed baudRate) {
     
     if(reset())
         return MCP2515Error::FAILINIT;
-    if(setBitrate(baudRate, _clockFrequency))
+    if(setBitrate(baudRate, _clockFrequency)) 
         return MCP2515Error::FAILINIT;
     return setNormalMode();
 }
@@ -98,6 +98,14 @@ MCP2515::ErrorFlags MCP2515::getErrorFlags() {
     return ErrorFlags{flags};
 }
 
+uint8_t MCP2515::getTxErrorCount() {
+    return readRegister(MCP_TEC);
+}
+
+uint8_t MCP2515::getRxErrorCount() {
+    return readRegister(MCP_REC);
+}
+
 void MCP2515::clearErrorFlags() {
     modifyRegister(MCP_EFLG, EFLG_RX1OVR | EFLG_RX0OVR, 0x00);
     modifyRegister(MCP_CANINTF, CANINTF_MERRF | CANINTF_ERRIF, 0x00);
@@ -107,7 +115,7 @@ void MCP2515::setSPIFrequency(uint32_t frequency) {
     _spiSettings = SPISettings(frequency, MSBFIRST, SPI_MODE0);
 }
 
-MCP2515Error MCP2515::setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask) {
+MCP2515Error MCP2515::setMask(const MASK num, bool extended, uint32_t mask) {
     auto err = setConfigMode();
     if(err)
         return err;
@@ -139,7 +147,7 @@ MCP2515Error MCP2515::setMask(const MCP2515_CAN_MASK num, bool extended, uint32_
     return setNormalMode();
 }
 
-MCP2515Error MCP2515::setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter) {
+MCP2515Error MCP2515::setFilter(const RXF num, bool extended, uint32_t filter) {
     auto err = setConfigMode();
     if(err)
         return err;
@@ -244,23 +252,23 @@ MCP2515Error MCP2515::setOneShotMode(bool enable) {
 MCP2515Error MCP2515::readMessage(RXBn rxbn, CANPacket &packet) {
     const struct RxBnRegs *rxb = &RXB[rxbn];
 
-    uint8_t headerBuf[5];
-    readRegisters(rxb->SIDH, headerBuf, sizeof(headerBuf));
-    uint32_t id = (headerBuf[MCP_SIDH] << 3) + (headerBuf[MCP_SIDL] >> 5);
+    uint8_t tbufdata[5];
+    readRegisters(rxb->SIDH, tbufdata, sizeof(tbufdata));
 
-    if(headerBuf[MCP_SIDL] & TXB_EXIDE_MASK) {
-        id = (id << 2) + (headerBuf[MCP_SIDL] & 0x03);
-        id = (id << 8) + headerBuf[MCP_EID8];
-        id = (id << 8) + headerBuf[MCP_EID0];
+    uint32_t id = (tbufdata[MCP_SIDH] << 3) + (tbufdata[MCP_SIDL] >> 5);
+    if(tbufdata[MCP_SIDL] & TXB_EXIDE_MASK) {
+        id = (id << 2) + (tbufdata[MCP_SIDL] & 0x03);
+        id = (id << 8) + tbufdata[MCP_EID8];
+        id = (id << 8) + tbufdata[MCP_EID0];
         packet._extended = true;
     }
     packet._id = id;
 
-    packet._dlc = headerBuf[MCP_DLC] & DLC_MASK;
+    packet._dlc = (tbufdata[MCP_DLC] & DLC_MASK);
     if(packet._dlc > CANPacket::MAX_DATA_LENGTH)
         return MCP2515Error::FAIL;
     
-    packet._rtr = headerBuf[MCP_DLC] & DLC_MASK;
+    packet._rtr = (readRegister(rxb->CTRL) & RXB_CTRL_RTR);
 
     readRegisters(rxb->DATA, packet._data.data(), packet._dlc);
 
@@ -328,7 +336,7 @@ void MCP2515::spiDisable() {
 
 MCP2515Error MCP2515::reset() {
     spiEnable();
-    _spi.transfer(INSTRUCTION_READ);
+    _spi.transfer(INSTRUCTION_RESET);
     spiDisable();
 
     delay(10);
@@ -344,8 +352,25 @@ MCP2515Error MCP2515::reset() {
 
     setRegister(MCP_CANINTE, CANINTF_RX0IF | CANINTF_RX1IF | CANINTF_ERRIF | CANINTF_MERRF);
 
-    modifyRegister(MCP_RXB0CTRL, RXB_CTRL_RXM_MASK | RXB_0_CTRL_BUKT, RXB_CTRL_RXM_STDEXT | RXB_0_CTRL_BUKT);
+    modifyRegister(MCP_RXB0CTRL, RXB_CTRL_RXM_MASK, RXB_CTRL_RXM_STDEXT);
     modifyRegister(MCP_RXB1CTRL, RXB_CTRL_RXM_MASK, RXB_CTRL_RXM_STDEXT);
+
+    // clear all filters
+    const RXF filters[] = {RXF0, RXF1, RXF2, RXF3, RXF4, RXF5};
+    for(uint8_t i = 0; i < sizeof(filters); i++) {
+        bool ext = (i == 1);
+        auto rc = setFilter(filters[i], ext, 0);
+        if(rc)
+            return rc;
+    }
+
+    // clear all masks
+    const MASK masks[] = {MASK0, MASK1};
+    for(uint8_t i=0;i<sizeof(masks);i++){
+        auto rc = setMask(masks[i], true, 0);
+        if(rc)
+            return rc;
+    }
 
     return MCP2515Error::OK;
 }
@@ -428,6 +453,7 @@ std::array<uint8_t, 8 + 5> MCP2515::serialize(const CANPacket &packet) {
     }
 
     dat[MCP_DLC] = packet._dlc;
+    dat[MCP_DLC] |= (packet._rtr) ? RTR_MASK : 0x00;
 
     std::copy(packet._data.begin(), packet._data.begin() + packet._dlc, dat.begin() + MCP_DATA);
     return dat;

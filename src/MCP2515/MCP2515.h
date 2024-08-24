@@ -16,12 +16,12 @@
 #include "ErrorCodes.hpp"
 #include "mcp2515_def.h"
 
-enum MCP2515_CAN_MASK {
+enum MASK: uint8_t {
     MASK0 = 0,
     MASK1 = 1
 };
 
-enum MCP2515_CAN_RXF {
+enum RXF: uint8_t {
     RXF0 = 0,
     RXF1 = 1,
     RXF2 = 2,
@@ -114,13 +114,15 @@ public:
     void end();
 
     ErrorFlags getErrorFlags();
+    uint8_t getTxErrorCount();
+    uint8_t getRxErrorCount();
     void clearErrorFlags();
 
     void setSPIFrequency(uint32_t frequency);
     MCP2515Error setBitrate(CanSpeed speed, CanClock clock = MCP_16MHZ);
 
-    MCP2515Error setMask(const MCP2515_CAN_MASK num, bool extended, uint32_t mask);
-    MCP2515Error setFilter(const MCP2515_CAN_RXF num, bool extended, uint32_t filter);
+    MCP2515Error setMask(const MASK num, bool extended, uint32_t mask);
+    MCP2515Error setFilter(const RXF num, bool extended, uint32_t filter);
 
     CanModes getMode();
     MCP2515Error setConfigMode();
@@ -181,7 +183,7 @@ private:
 
     uint8_t _csPin;
     CanClock _clockFrequency;
-    SPISettings _spiSettings{10000000, MSBFIRST, SPI_MODE0};
+    SPISettings _spiSettings{5000000, MSBFIRST, SPI_MODE0};
     SPIClass &_spi;
 };
 

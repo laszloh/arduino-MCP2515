@@ -33,10 +33,21 @@ public:
 
     explicit operator bool() const { return isValid(); }
 
-    bool isValid() const { return ((!_extended && _id < 0x7FF) || (_extended && _id < 0x1FFFFFFF)) && (_dlc < MAX_DATA_LENGTH); }
-    bool extended() const {return _extended; }
+    bool isValid() const { 
+        // check id range
+        if((!_extended && _id > 0x7FF) || (_extended && _id > 0x1FFFFFFF))
+            return false;
+
+        // check dlc range
+        if(_dlc > MAX_DATA_LENGTH)
+            return false;
+        
+        // all checks passed
+        return true;
+    }
 
     uint32_t id() const { return _id; }
+    bool extended() const { return _extended; }
     uint8_t dlc() const { return _dlc; }
     bool rtr() const { return _rtr; }
     const std::array<uint8_t, 8> &data() const { return _data; }
@@ -50,6 +61,7 @@ public:
         _extended = extended;
         _id = id;
         _rtr = rtr;
+        _dlc = 0;
 
         return MCP2515Error::OK;
     }
@@ -70,11 +82,11 @@ public:
     static constexpr uint8_t MAX_DATA_LENGTH = 8;
 
 private:
-    bool _extended : 1;
-    bool _rtr : 1;
+    bool _extended:1;
+    bool _rtr:1;
+    uint8_t _dlc{0};
     uint32_t _id{UINT32_MAX};
     std::array<uint8_t, MAX_DATA_LENGTH> _data{0};
-    uint8_t _dlc{0};
 };
 
 #endif

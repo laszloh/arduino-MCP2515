@@ -8,40 +8,60 @@
 #include "Arduino.h"
 #include "MCP2515.h"
 
-MCP2515 MCP = MCP2515(10, MCP2515::MCP_8MHZ);
+MCP2515 MCP = MCP2515(PIN_PD7, MCP2515::MCP_8MHZ);
+CANPacket txPacket;
+
+constexpr uint8_t resetPin = PIN_PD6;
+constexpr uint8_t stbPin = PIN_PD5;
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(38400);
     while(!Serial) { }
+
+    pinMode(stbPin, OUTPUT);
+    digitalWrite(stbPin, LOW);
 
     Serial.println(F("CAN Echo example"));
     Serial.println(F("Sends back all packets inverted on ID + 1"));
 
-    // start the CAN bus at 250 kbps
-    if(MCP.begin(MCP2515::CAN_250KBPS)) {
+    txPacket.startExtended(0xF6);
+    for(uint8_t i=0;i<8;i++)
+        txPacket.writeData(0xA0 + i);
+
+    // start the CAN bus
+    if(MCP.begin(MCP2515::CAN_500KBPS)) {
         Serial.println(F("Starting CAN failed!"));
         while(true) { }
     }
+    Serial.println("------- CAN Read ----------");
+    Serial.println("ID  DLC   DATA");
 }
 
 void loop() {
     CANPacket rxPacket;
 
-    if(!MCP.checkMessage())
-        return;
-
     auto rxErr = MCP.readMessage(rxPacket);
     if(rxErr == MCP2515Error::OK) {
         // packet received
-        Serial.printf(F("Received packet, id: 0x%08x, extended: %d, dlc: %d\n"), rxPacket.id(),
-                      rxPacket.extended(), rxPacket.dlc());
+        Serial.print(rxPacket.id(), HEX); // print ID
+        Serial.print(' ');
+        Serial.print(rxPacket.extended(), HEX); // print DLC
+        Serial.print(' ');
+        Serial.print(rxPacket.dlc(), HEX); // print DLC
+        Serial.print(' ');
+
+        for(int i = 0; i < rxPacket.dlc(); i++) { // print the data
+            Serial.printf("%02x ", rxPacket.data()[i]);
+        }
+
+        Serial.println();
 
         CANPacket txPacket;
         txPacket.startPacket(rxPacket.id() + 1, rxPacket.extended(), rxPacket.rtr());
-        if(!txPacket.rtr()){
-            const auto &rxData = rxPacket.data();
+        if(!txPacket.rtr()) {
+            const auto &dat = rxPacket.data();
             for(uint8_t i=0;i<rxPacket.dlc();i++)
-                txPacket.writeData(rxData[i]^0xFF);
+                txPacket.writeData(dat[i] ^ 0xFF);
         }
 
         auto txErr = MCP.sendMessage(txPacket);
@@ -58,11 +78,13 @@ void loop() {
 
         if(millis() - lastHeartbeat > heartbeatInterval) {
             lastHeartbeat = millis();
+            Serial.print('.');
 
             auto errFlags = MCP.getErrorFlags();
-            Serial.printf(F("Error flags: 0x%02x\n"), errFlags.flags);
+            if(errFlags){
+                MCP.clearErrorFlags();
+                Serial.printf(F("Error flags: 0x%02x (REC: %d, TEC: %d)\n"), errFlags.flags, MCP.getRxErrorCount(), MCP.getTxErrorCount());
+            }
         }
     }
-
-
 }

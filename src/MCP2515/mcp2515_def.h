@@ -191,8 +191,6 @@ enum STAT: uint8_t {
     STAT_RXIF_MASK = 0x03,
 };
 
-enum MASK: uint8_t { MASK0 = 0, MASK1 };
-enum RXF: uint8_t { RXF0 = 0, RXF1, RXF2, RXF3, RXF4, RXF5 };
 enum RXBn: uint8_t { RXB0 = 0, RXB1 };
 enum TXBn: uint8_t { TXB0 = 0, TXB1, TXB2 };
 
