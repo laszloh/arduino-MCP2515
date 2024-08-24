@@ -95,7 +95,10 @@ MCP2515::ErrorFlags MCP2515::getErrorFlags() {
     flags |= (canIntF & CANINTF_MERRF) ? ErrorFlags::MCP_EFLAG_MERR : 0x00;
     flags |= (canIntF & CANINTF_ERRIF) ? ErrorFlags::MCP_EFLAG_ERR : 0x00;
 
-    return ErrorFlags{flags};
+    uint8_t tec = readRegister(MCP_TEC);
+    uint8_t rec = readRegister(MCP_REC);
+
+    return ErrorFlags{flags, tec, rec};
 }
 
 uint8_t MCP2515::getTxErrorCount() {

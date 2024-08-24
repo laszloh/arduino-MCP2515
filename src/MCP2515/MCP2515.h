@@ -97,14 +97,40 @@ public:
 
         };
 
-        const uint16_t flags;
+        const uint8_t &raw() const { return flags; }
 
-        ErrorFlags(uint16_t flags): flags(flags) { }
+        constexpr ErrorFlags(uint16_t flags, uint8_t tec, uint8_t rec): flags(flags), tec(tec), rec(rec) { }
 
         explicit operator bool() const {
             return flags;
         }
-    };
+
+        bool errorWarning() const { return flags & MCP_EFLAG_EWARN; }
+        bool rxErrorWarning() const { return flags & MCP_EFLAG_RXWARN; }
+        bool txErrorWarning() const { return flags & MCP_EFLAG_TXWARN; }
+
+        bool rxErrorPassive() const { return flags & MCP_EFLAG_RXEP; }
+        bool txErrorPassive() const { return flags & MCP_EFLAG_TXEP; }
+
+        bool txBussOff() const { return flags & MCP_EFLAG_TXBO; }
+
+        const uint8_t &txErrorCounter() const { return tec; }
+        const uint8_t &rxErrorCounter() const { return rec; }
+
+        // RX buffer overflows
+        bool rxBufferOverflow() const { return flags & (MCP_EFLAG_RX0_OVF | MCP_EFLAG_RX1_OVF); }
+        bool rxBuffer0Overflow() const { return flags & MCP_EFLAG_RX0_OVF; }
+        bool rxBuffer1Overflow() const { return flags & MCP_EFLAG_RX1_OVF; }
+
+        // error interrupt flags
+        bool generalErrorIntFlags() const { return flags & MCP_EFLAG_ERR; }
+        bool messageErrorIntFlag() const { return flags & MCP_EFLAG_MERR; }
+
+    protected:
+        const uint16_t flags;
+        const uint8_t tec;
+        const uint8_t rec;
+   };
 
 
 public:
