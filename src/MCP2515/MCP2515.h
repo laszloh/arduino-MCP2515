@@ -137,6 +137,7 @@ public:
     MCP2515(int cs = MCP2515_DEFAULT_CS_PIN, CanClock clk = CanClock::MCP_8MHZ, SPIClass &spi = SPI);
 
     MCP2515Error begin(CanSpeed baudRate);
+    MCP2515Error begin(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
     void end();
 
     ErrorFlags getErrorFlags();
@@ -146,6 +147,7 @@ public:
 
     void setSPIFrequency(uint32_t frequency);
     MCP2515Error setBitrate(CanSpeed speed, CanClock clock = MCP_8MHZ);
+    MCP2515Error setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
 
     MCP2515Error setMask(const MASK num, bool extended, uint32_t mask);
     MCP2515Error setFilter(const RXF num, bool extended, uint32_t filter);

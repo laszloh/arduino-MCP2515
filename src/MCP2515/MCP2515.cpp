@@ -83,6 +83,15 @@ MCP2515Error MCP2515::begin(CanSpeed baudRate) {
     return setNormalMode();
 }
 
+MCP2515Error MCP2515::begin(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
+    auto err = begin(CAN_1000KBPS);
+    if(err)
+        return err;
+    
+    setBitrate(cnf1, cnf2, cnf3);
+    return setNormalMode();
+}
+
 void MCP2515::end() {
     reset();
     setSleepMode();
@@ -460,6 +469,16 @@ std::array<uint8_t, 8 + 5> MCP2515::serialize(const CANPacket &packet) {
 
     std::copy(packet._data.begin(), packet._data.begin() + packet._dlc, dat.begin() + MCP_DATA);
     return dat;
+}
+
+void setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
+    auto err = setConfigMode();
+    if(err)
+        return err;
+
+    setRegister(MCP_CNF1, cfg.cnf1);
+    setRegister(MCP_CNF2, cfg.cnf2);
+    setRegister(MCP_CNF3, cfg.cnf3); 
 }
 
 MCP2515Error MCP2515::setBitrate(CanSpeed speed, CanClock clock) {
