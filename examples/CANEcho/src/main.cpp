@@ -83,7 +83,7 @@ void loop() {
             auto errFlags = MCP.getErrorFlags();
             if(errFlags){
                 MCP.clearErrorFlags();
-                Serial.printf(F("Error flags: 0x%02x (REC: %d, TEC: %d)\n"), errFlags.raw(), errFlags.rxErrorCounter(), errFlags.txErrorCounter());
+                Serial.printf(F("Error flags: 0x%03x (REC: %d, TEC: %d)\n"), errFlags.raw(), errFlags.rxErrorCounter(), errFlags.txErrorCounter());
             }
         }
     }

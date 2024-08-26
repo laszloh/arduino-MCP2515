@@ -16,20 +16,6 @@
 #include "ErrorCodes.hpp"
 #include "mcp2515_def.h"
 
-enum MASK: uint8_t {
-    MASK0 = 0,
-    MASK1 = 1
-};
-
-enum RXF: uint8_t {
-    RXF0 = 0,
-    RXF1 = 1,
-    RXF2 = 2,
-    RXF3 = 3,
-    RXF4 = 4,
-    RXF5 = 5
-};
-
 #define MCP2515_DEFAULT_CS_PIN  10
 #define MCP2515_DEFAULT_INT_PIN 2
 
@@ -80,6 +66,20 @@ public:
         MCP_LOOPBACK = 0x40,
         MCP_LISTENONLY = 0x60,
         MCP_CONFIG = 0x80
+    };
+
+    enum MASK: uint8_t {
+        MASK0 = 0,
+        MASK1 = 1
+    };
+
+    enum RXF: uint8_t {
+        RXF0 = 0,
+        RXF1 = 1,
+        RXF2 = 2,
+        RXF3 = 3,
+        RXF4 = 4,
+        RXF5 = 5
     };
 
     struct ErrorFlags {
@@ -145,7 +145,7 @@ public:
     void clearErrorFlags();
 
     void setSPIFrequency(uint32_t frequency);
-    MCP2515Error setBitrate(CanSpeed speed, CanClock clock = MCP_16MHZ);
+    MCP2515Error setBitrate(CanSpeed speed, CanClock clock = MCP_8MHZ);
 
     MCP2515Error setMask(const MASK num, bool extended, uint32_t mask);
     MCP2515Error setFilter(const RXF num, bool extended, uint32_t filter);
@@ -166,7 +166,7 @@ public:
 
     MCP2515Error sendMessage(const CANPacket &packet);
 
-private:
+protected:
     inline void spiEnable();
     inline void spiDisable();
     MCP2515Error reset();

@@ -54,7 +54,7 @@ public:
     // return internal enum
     Code code() const { return _code; }
 
-    const char * c_str() const {
+    const char *c_str() const {
         static constexpr const char *messages[] = {
             "OK", "FAIL", "ALLTXBUSY", "FAILINIT", "FAILTX",
             "NOMSG"
@@ -80,6 +80,6 @@ public:
         return reinterpret_cast<const __FlashStringHelper*>(pgm_read_word(&(messages[c])));
     }
 
-private:
-    Code _code{Code::OK};
+protected:
+    const Code _code{Code::OK};
 };

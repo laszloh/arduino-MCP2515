@@ -21,7 +21,7 @@ class CANPacket {
 
 public:
     CANPacket() : _extended(false), _rtr(false) { }
-    ~CANPacket() = default;
+    virtual ~CANPacket() = default;
 
     // copy operators
     CANPacket(const CANPacket&) = default;
@@ -81,7 +81,7 @@ public:
 
     static constexpr uint8_t MAX_DATA_LENGTH = 8;
 
-private:
+protected:
     bool _extended:1;
     bool _rtr:1;
     uint8_t _dlc{0};
