@@ -209,7 +209,7 @@ protected:
 
     uint8_t _csPin;
     CanClock _clockFrequency;
-    SPISettings _spiSettings{5000000, MSBFIRST, SPI_MODE0};
+    SPISettings _spiSettings{4000000, MSBFIRST, SPI_MODE0};
     SPIClass &_spi;
 };
 
