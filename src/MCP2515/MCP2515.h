@@ -91,6 +91,8 @@ public:
     };
 
     /// @brief All error related flags
+    /// See http://www.can-wiki.info/doku.php?id=can_faq:can_faq_erors for further 
+    /// information about the CAN warning and error states
     struct ErrorFlags {
         enum CAN_EFLAG: uint16_t {
             MCP_EFLG_EWARN     = 0x0001,
@@ -116,24 +118,47 @@ public:
         /// @param rec receive error counter value
         constexpr ErrorFlags(uint16_t flags, uint8_t tec, uint8_t rec): flags(flags), tec(tec), rec(rec) { }
 
-        /// @brief returns true if any error is set 
+        /// @brief returns true if any error is present 
         explicit operator bool() const {
             return flags;
         }
 
-        /// @brief Status of the EWARN bit in EFLAG register
-        /// This bit represent a 
+        /// @brief Status of the EWARN bit in EFLG register
+        /// This bit is set, when the TEC or REC is equal or greater than 96
         /// @return true if the bit is set, false otherwise
         bool errorWarning() const { return flags & MCP_EFLG_EWARN; }
+
+        /// @brief Status of the RXWARN bit in EFLG regsiter
+        /// This bit is set, when REC equal or greater than 96
+        /// @return true if the bit is set, false otherwise
         bool rxErrorWarning() const { return flags & MCP_EFLG_RXWARN; }
+
+        /// @brief Status of the TXWARN bit in EFLG regsiter
+        /// This bit is set, when TEC equal or greater than 96
+        /// @return true if the bit is set, false otherwise
         bool txErrorWarning() const { return flags & MCP_EFLG_TXWARN; }
 
+        /// @brief Status of the RXEP bit in EFLG regsiter
+        /// This bit is set, when REC equal or greater than 128
+        /// @return true if the bit is set, false otherwise
         bool rxErrorPassive() const { return flags & MCP_EFLG_RXEP; }
+
+        /// @brief Status of the TXEP bit in EFLG regsiter
+        /// This bit is set, when TEC equal or greater than 128
+        /// @return true if the bit is set, false otherwise
         bool txErrorPassive() const { return flags & MCP_EFLG_TXEP; }
 
-        bool txBussOff() const { return flags & MCP_EFLG_TXBO; }
+        /// @brief Status of the TXBO bit in EFLG register
+        /// this bit is set, when TEC is greater than 255
+        /// @return true if the bit is set, false otherwise
+        bool txBusOff() const { return flags & MCP_EFLG_TXBO; }
 
+        /// @brief Number of transmit errors detected by this node
+        /// @return The value of the TEC register at the time of the ErrorFlags creation
         const uint8_t &txErrorCounter() const { return tec; }
+
+        /// @brief Number of receive errors detected by this node
+        /// @return The value of the REC register at the time of the ErrorFlags creation
         const uint8_t &rxErrorCounter() const { return rec; }
 
         // RX buffer overflows
