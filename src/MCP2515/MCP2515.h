@@ -19,8 +19,11 @@
 #define MCP2515_DEFAULT_CS_PIN  10
 #define MCP2515_DEFAULT_INT_PIN 2
 
+/// @brief MCP2515 driver class
 class MCP2515 {
 public:
+     /// @brief CAN baudrate configration values
+     /// @attention Not all combination of MCP2515 clock & baudrate are supported
     enum CanSpeed: uint8_t {
         CAN_1KBPS,
         CAN_5KBPS,
@@ -45,6 +48,7 @@ public:
         CAN_1000KBPS
     };
 
+    /// @brief Oscillator frequency of the MCP2515
     enum CanClock: uint8_t {
         MCP_20MHZ,
         MCP_16MHZ,
@@ -52,6 +56,7 @@ public:
         MCP_8MHZ,
     };
 
+    /// @brief CLKOUT pin configrations
     enum CanClkOut {
         CLKOUT_DISABLE = -1,
         CLKOUT_DIV1 = 0x0,
@@ -60,6 +65,7 @@ public:
         CLKOUT_DIV8 = 0x3,
     };
 
+    /// @brief CAN protocol engine modes
     enum CanModes : uint8_t {
         MCP_NORMAL = 0x00,
         MCP_SLEEP = 0x20,
@@ -68,11 +74,13 @@ public:
         MCP_CONFIG = 0x80
     };
 
+    /// @brief Selection values for the CAN-ID filter masks
     enum MASK: uint8_t {
         MASK0 = 0,
         MASK1 = 1
     };
 
+    /// @brief Selection values for the CAN-ID filters
     enum RXF: uint8_t {
         RXF0 = 0,
         RXF1 = 1,
@@ -82,49 +90,60 @@ public:
         RXF5 = 5
     };
 
+    /// @brief All error related flags
     struct ErrorFlags {
         enum CAN_EFLAG: uint16_t {
-            MCP_EFLAG_EWARN     = 0x0001,
-            MCP_EFLAG_RXWARN    = 0x0002,
-            MCP_EFLAG_TXWARN    = 0x0004,
-            MCP_EFLAG_RXEP      = 0x0008,
-            MCP_EFLAG_TXEP      = 0x0010,
-            MCP_EFLAG_TXBO      = 0x0020,
-            MCP_EFLAG_RX0_OVF   = 0x0040,
-            MCP_EFLAG_RX1_OVF   = 0x0080,
-            MCP_EFLAG_MERR      = 0x0100,
-            MCP_EFLAG_ERR       = 0x0200,
+            MCP_EFLG_EWARN     = 0x0001,
+            MCP_EFLG_RXWARN    = 0x0002,
+            MCP_EFLG_TXWARN    = 0x0004,
+            MCP_EFLG_RXEP      = 0x0008,
+            MCP_EFLG_TXEP      = 0x0010,
+            MCP_EFLG_TXBO      = 0x0020,
+            MCP_EFLG_RX0_OVF   = 0x0040,
+            MCP_EFLG_RX1_OVF   = 0x0080,
+            MCP_EFLG_MERR      = 0x0100,
+            MCP_EFLG_ERR       = 0x0200,
 
         };
 
+        /// @brief Access to the raw value
+        /// @return a reference to the underlying error value
         const uint8_t &raw() const { return flags; }
 
+        /// @brief Create a new ErrorFlags object
+        /// @param flags The value of the error flags
+        /// @param tec transmit error counter value
+        /// @param rec receive error counter value
         constexpr ErrorFlags(uint16_t flags, uint8_t tec, uint8_t rec): flags(flags), tec(tec), rec(rec) { }
 
+        /// @brief returns true if any error is set 
         explicit operator bool() const {
             return flags;
         }
 
-        bool errorWarning() const { return flags & MCP_EFLAG_EWARN; }
-        bool rxErrorWarning() const { return flags & MCP_EFLAG_RXWARN; }
-        bool txErrorWarning() const { return flags & MCP_EFLAG_TXWARN; }
+        /// @brief Status of the EWARN bit in EFLAG register
+        /// This bit represent a 
+        /// @return true if the bit is set, false otherwise
+        bool errorWarning() const { return flags & MCP_EFLG_EWARN; }
+        bool rxErrorWarning() const { return flags & MCP_EFLG_RXWARN; }
+        bool txErrorWarning() const { return flags & MCP_EFLG_TXWARN; }
 
-        bool rxErrorPassive() const { return flags & MCP_EFLAG_RXEP; }
-        bool txErrorPassive() const { return flags & MCP_EFLAG_TXEP; }
+        bool rxErrorPassive() const { return flags & MCP_EFLG_RXEP; }
+        bool txErrorPassive() const { return flags & MCP_EFLG_TXEP; }
 
-        bool txBussOff() const { return flags & MCP_EFLAG_TXBO; }
+        bool txBussOff() const { return flags & MCP_EFLG_TXBO; }
 
         const uint8_t &txErrorCounter() const { return tec; }
         const uint8_t &rxErrorCounter() const { return rec; }
 
         // RX buffer overflows
-        bool rxBufferOverflow() const { return flags & (MCP_EFLAG_RX0_OVF | MCP_EFLAG_RX1_OVF); }
-        bool rxBuffer0Overflow() const { return flags & MCP_EFLAG_RX0_OVF; }
-        bool rxBuffer1Overflow() const { return flags & MCP_EFLAG_RX1_OVF; }
+        bool rxBufferOverflow() const { return flags & (MCP_EFLG_RX0_OVF | MCP_EFLG_RX1_OVF); }
+        bool rxBuffer0Overflow() const { return flags & MCP_EFLG_RX0_OVF; }
+        bool rxBuffer1Overflow() const { return flags & MCP_EFLG_RX1_OVF; }
 
         // error interrupt flags
-        bool generalErrorIntFlags() const { return flags & MCP_EFLAG_ERR; }
-        bool messageErrorIntFlag() const { return flags & MCP_EFLAG_MERR; }
+        bool generalErrorIntFlags() const { return flags & MCP_EFLG_ERR; }
+        bool messageErrorIntFlag() const { return flags & MCP_EFLG_MERR; }
 
     protected:
         const uint16_t flags;
