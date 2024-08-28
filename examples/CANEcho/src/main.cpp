@@ -29,6 +29,9 @@ void setup() {
         txPacket.writeData(0xA0 + i);
 
     // start the CAN bus
+    // for custom baudrate settings from here: https://kvaser.com/support/calculators/bit-timing-calculator/
+    //        MCP.begin(cnf1, cnf2, cnf3);
+    //  f.e.: MCP.begin(0xC0, 0xAD, 0x02);  // 250kbps@8MHZ (T1=13, T2=3, SP=81,25%, SJW=4)
     if(MCP.begin(MCP2515::CAN_500KBPS)) {
         Serial.println(F("Starting CAN failed!"));
         while(true) { }
