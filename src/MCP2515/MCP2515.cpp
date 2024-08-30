@@ -101,8 +101,8 @@ MCP2515::ErrorFlags MCP2515::getErrorFlags() {
     uint16_t flags = readRegister(MCP_EFLG);
     
     uint8_t canIntF = readRegister(MCP_CANINTF);
-    flags |= (canIntF & CANINTF_MERRF) ? ErrorFlags::MCP_EFLAG_MERR : 0x00;
-    flags |= (canIntF & CANINTF_ERRIF) ? ErrorFlags::MCP_EFLAG_ERR : 0x00;
+    flags |= (canIntF & CANINTF_MERRF) ? ErrorFlags::MCP_EFLG_MERR : 0x00;
+    flags |= (canIntF & CANINTF_ERRIF) ? ErrorFlags::MCP_EFLG_ERR : 0x00;
 
     uint8_t tec = readRegister(MCP_TEC);
     uint8_t rec = readRegister(MCP_REC);
@@ -469,14 +469,15 @@ std::array<uint8_t, 8 + 5> MCP2515::serialize(const CANPacket &packet) {
     return dat;
 }
 
-void MCP2515::setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
+MCP2515Error MCP2515::setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
     auto err = setConfigMode();
     if(err)
         return err;
 
-    setRegister(MCP_CNF1, cfg.cnf1);
-    setRegister(MCP_CNF2, cfg.cnf2);
-    setRegister(MCP_CNF3, cfg.cnf3); 
+    setRegister(MCP_CNF1, cnf1);
+    setRegister(MCP_CNF2, cnf2);
+    setRegister(MCP_CNF3, cnf3);
+    return MCP2515Error::OK;
 }
 
 MCP2515Error MCP2515::setBitrate(CanSpeed speed) {

@@ -41,7 +41,7 @@ void setup() {
 }
 
 void loop() {
-    CANPacket rxPacket;
+    MCP2515CanPaket rxPacket;
 
     auto rxErr = MCP.readMessage(rxPacket);
     if(rxErr == MCP2515Error::OK) {

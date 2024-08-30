@@ -26,7 +26,7 @@ class MCP2515CanPaket : public CANPacket {
 public:
     MCP2515CanPaket() = default;
 
-    int8_t &getFilterHif() const { return filHit; }
+    const int8_t &getFilterHif() const { return filHit; }
 
 private:
     int8_t filHit{-1};
@@ -123,7 +123,7 @@ public:
 
         /// @brief Access to the raw value
         /// @return a reference to the underlying error value
-        const uint8_t &raw() const { return flags; }
+        const uint16_t &raw() const { return flags; }
 
         /// @brief Create a new ErrorFlags object
         /// @param flags The value of the error flags
@@ -240,7 +240,8 @@ public:
     /// @param cnf1 The value of the CNF1 register
     /// @param cnf2 The value of the CNF2 register
     /// @param cnf3 The value of the CNF3 register
-    void setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
+    /// @return MCP2515Error::OK if successful
+    MCP2515Error setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
 
     /// @brief Set the Mask bits for the sepific rx buffer
     /// See chapter 4.5 of the MCP2515 datasheet for more information on Mask and Filter registers
