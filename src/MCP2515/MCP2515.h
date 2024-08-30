@@ -21,11 +21,14 @@
 
 class MCP2515;
 
+/// @brief MCP2515 specific CAN packet
 class MCP2515CanPaket : public CANPacket {
     friend class MCP2515;
 public:
     MCP2515CanPaket() = default;
 
+    /// @brief Returns which filter was applied to the packet (if any)
+    /// @return The filter id
     const int8_t &getFilterHif() const { return filHit; }
 
 private:
@@ -108,16 +111,16 @@ public:
     /// information about the CAN warning and error states
     struct ErrorFlags {
         enum CAN_EFLAG: uint16_t {
-            MCP_EFLG_EWARN     = 0x0001,
-            MCP_EFLG_RXWARN    = 0x0002,
-            MCP_EFLG_TXWARN    = 0x0004,
-            MCP_EFLG_RXEP      = 0x0008,
-            MCP_EFLG_TXEP      = 0x0010,
-            MCP_EFLG_TXBO      = 0x0020,
-            MCP_EFLG_RX0_OVF   = 0x0040,
-            MCP_EFLG_RX1_OVF   = 0x0080,
-            MCP_EFLG_MERR      = 0x0100,
-            MCP_EFLG_ERR       = 0x0200,
+            MCP_EFLG_EWARN     = 0x0001,    ///< Either RXWARN or TXWARN is set
+            MCP_EFLG_RXWARN    = 0x0002,    ///< The REC is equal or greater than 96
+            MCP_EFLG_TXWARN    = 0x0004,    ///< The TEC is equal or greater than 96
+            MCP_EFLG_RXEP      = 0x0008,    ///< The REC is equal or greater than 128
+            MCP_EFLG_TXEP      = 0x0010,    ///< The TEC is equal or greater than 128
+            MCP_EFLG_TXBO      = 0x0020,    ///< The TEC is greater than 255
+            MCP_EFLG_RX0_OVF   = 0x0040,    ///< Rx Buffer 0 overflow flag
+            MCP_EFLG_RX1_OVF   = 0x0080,    ///< Rx Buffer 1 overflow flag
+            MCP_EFLG_MERR      = 0x0100,    ///< Message error flag
+            MCP_EFLG_ERR       = 0x0200,    ///< General error flag
 
         };
 
@@ -174,13 +177,24 @@ public:
         /// @return The value of the REC register at the time of the ErrorFlags creation
         const uint8_t &rxErrorCounter() const { return rec; }
 
-        // RX buffer overflows
+        /// @brief At least one of the overflow flags is set
+        /// @return True if at least one of the overflow flags is set
         bool rxBufferOverflow() const { return flags & (MCP_EFLG_RX0_OVF | MCP_EFLG_RX1_OVF); }
+
+        /// @brief Rx Buffer 0 overflow flag status
+        /// @return The status of the Rx Buffer 0 overflow flag
         bool rxBuffer0Overflow() const { return flags & MCP_EFLG_RX0_OVF; }
+
+        /// @brief Rx Buffer 1 overflow flag status
+        /// @return The status of the Rx Buffer 1 overflow flag
         bool rxBuffer1Overflow() const { return flags & MCP_EFLG_RX1_OVF; }
 
-        // error interrupt flags
+        /// @brief The MCP2515 has detected an error
+        /// @return True if the MCP2515 has detected an error
         bool generalErrorIntFlags() const { return flags & MCP_EFLG_ERR; }
+
+        /// @brief The MCP2515 has detected a message error
+        /// @return True if the MCP2515 has detected a message error
         bool messageErrorIntFlag() const { return flags & MCP_EFLG_MERR; }
 
     protected:
