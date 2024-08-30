@@ -29,10 +29,15 @@ public:
 
     /// @brief Returns which filter was applied to the packet (if any)
     /// @return The filter id
-    const int8_t &getFilterHif() const { return filHit; }
+    const int8_t &getFilterHif() const { return _filHit; }
+
+    /// @brief Returns which Rx Buffer was used
+    /// @return The rx buffer used
+    const uint8_t &getRxBuffer() const { return _rxBuffer; }
 
 private:
-    int8_t filHit{-1};
+    int8_t _filHit{-1};
+    uint8_t _rxBuffer{0xFF};
 };
 
 /// @brief MCP2515 driver class

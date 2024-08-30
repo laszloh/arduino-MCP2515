@@ -262,6 +262,8 @@ void MCP2515::setRxBufferRollover(bool enable) {
 MCP2515Error MCP2515::readMessage(RXBn rxbn, MCP2515CanPaket &packet) {
     const struct RxBnRegs *rxb = &RXB[rxbn];
 
+    packet._rxBuffer = rxbn;
+
     uint8_t tbufdata[5];
     readRegisters(rxb->SIDH, tbufdata, sizeof(tbufdata));
 
@@ -278,7 +280,13 @@ MCP2515Error MCP2515::readMessage(RXBn rxbn, MCP2515CanPaket &packet) {
     if(packet._dlc > CANPacket::MAX_DATA_LENGTH)
         return MCP2515Error::FAIL;
     
-    packet._rtr = (readRegister(rxb->CTRL) & RXB_CTRL_RTR);
+    uint8_t ctrl = readRegister(rxb->CTRL);
+    if(rxbn == RXB0) {
+        packet._filHit = (ctrl & RXB_0_CTRL_FILHIT);
+    } else {
+        packet._filHit = (ctrl & RXB_1_CTRL_FILHIT);
+    }
+    packet._rtr = (ctrl & RXB_CTRL_RTR);
 
     readRegisters(rxb->DATA, packet._data.data(), packet._dlc);
 

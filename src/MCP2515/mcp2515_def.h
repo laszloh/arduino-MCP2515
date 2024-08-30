@@ -170,6 +170,8 @@ static constexpr uint8_t RXB_CTRL_RXM_STDEXT = 0x00;
 static constexpr uint8_t RXB_CTRL_RXM_MASK = 0x60;
 static constexpr uint8_t RXB_CTRL_RTR = 0x08;
 static constexpr uint8_t RXB_0_CTRL_BUKT = 0x04;
+static constexpr uint8_t RXB_0_CTRL_FILHIT = 0x01;
+static constexpr uint8_t RXB_1_CTRL_FILHIT = 0x07;
 
 static constexpr uint8_t MCP_SIDH = 0;
 static constexpr uint8_t MCP_SIDL = 1;
