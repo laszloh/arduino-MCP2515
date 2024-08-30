@@ -190,9 +190,9 @@ public:
     void clearErrorFlags();
 
     void setSPIFrequency(uint32_t frequency);
-    MCP2515Error setBitrate(CanSpeed speed, CanClock clock = MCP_8MHZ);
-    MCP2515Error setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
+    MCP2515Error setBitrate(CanSpeed speed);
 
+    void setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
     MCP2515Error setMask(const MASK num, bool extended, uint32_t mask);
     MCP2515Error setFilter(const RXF num, bool extended, uint32_t filter);
 
@@ -203,9 +203,10 @@ public:
     MCP2515Error setSleepMode();
     MCP2515Error setNormalMode();
 
-    MCP2515Error setWakeupFilter(bool enable);
-    MCP2515Error setOneShotMode(bool enable);
-    MCP2515Error setClockOut(const CanClkOut divisor);
+    void setWakeupFilter(bool enable);
+    void setOneShotMode(bool enable);
+    void setClockOut(const CanClkOut divisor);
+    void setRxBufferRollover(bool enable);
 
     bool checkMessage();
     MCP2515Error readMessage(CANPacket &packet);

@@ -78,7 +78,7 @@ MCP2515Error MCP2515::begin(CanSpeed baudRate) {
     
     if(reset())
         return MCP2515Error::FAILINIT;
-    if(setBitrate(baudRate, _clockFrequency)) 
+    if(setBitrate(baudRate)) 
         return MCP2515Error::FAILINIT;
     return setNormalMode();
 }
@@ -226,14 +226,23 @@ MCP2515Error MCP2515::setMode(const CanctrlReqopMode mode) {
     return MCP2515Error::FAIL;
 }
 
-MCP2515Error MCP2515::setClockOut(const CanClkOut divisor) {
+void MCP2515::setWakeupFilter(bool enable) {
+    uint8_t envalue = (enable ? CNF3_WAKFIL : 0x00);
+    modifyRegister(MCP_CNF3, CNF3_WAKFIL, envalue);
+}
+
+void MCP2515::setOneShotMode(bool enable) {
+    uint8_t envalue = (enable ? CANCTRL_OSM : 0x00);
+    modifyRegister(MCP_CANCTRL, CANCTRL_OSM, envalue);
+}
+
+void MCP2515::setClockOut(const CanClkOut divisor) {
     if(divisor == CLKOUT_DISABLE) {
         // disable CLKEN
         modifyRegister(MCP_CANCTRL, CANCTRL_CLKEN, 0x00);
 
         // enable SOF for CLKOUT pin
         modifyRegister(MCP_CNF3, CNF3_SOF, CNF3_SOF);
-        return MCP2515Error::OK;
     }
 
     // set prescaler
@@ -244,21 +253,10 @@ MCP2515Error MCP2515::setClockOut(const CanClkOut divisor) {
 
     // disable SOF for clockout pin
     modifyRegister(MCP_CNF3, CNF3_SOF, 0x00);
-    return MCP2515Error::OK;
 }
 
-MCP2515Error MCP2515::setWakeupFilter(bool enable) {
-    uint8_t envalue = (enable ? CNF3_WAKFIL : 0x00);
-    modifyRegister(MCP_CNF3, CNF3_WAKFIL, envalue);
-
-    return MCP2515Error::OK;
-}
-
-MCP2515Error MCP2515::setOneShotMode(bool enable) {
-    uint8_t envalue = (enable ? CANCTRL_OSM : 0x00);
-    modifyRegister(MCP_CANCTRL, CANCTRL_OSM, envalue);
-
-    return MCP2515Error::OK;
+void MCP2515::setRxBufferRollover(bool enable) {
+    modifyRegister(MCP_RXB0CTRL, RXB_0_CTRL_BUKT, (enable) ? 0xFF : 0x00);
 }
 
 MCP2515Error MCP2515::readMessage(RXBn rxbn, CANPacket &packet) {
@@ -471,7 +469,7 @@ std::array<uint8_t, 8 + 5> MCP2515::serialize(const CANPacket &packet) {
     return dat;
 }
 
-void setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
+void MCP2515::setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
     auto err = setConfigMode();
     if(err)
         return err;
@@ -481,13 +479,13 @@ void setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3) {
     setRegister(MCP_CNF3, cfg.cnf3); 
 }
 
-MCP2515Error MCP2515::setBitrate(CanSpeed speed, CanClock clock) {
+MCP2515Error MCP2515::setBitrate(CanSpeed speed) {
     auto err = setConfigMode();
     if(err)
         return err;
 
     mcp_baud_cfg cfg{};
-    switch(clock){
+    switch(_clockFrequency){
         case CanClock::MCP_8MHZ :
             switch(speed) {
                 case CAN_1000KBPS:
