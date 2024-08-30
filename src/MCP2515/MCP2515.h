@@ -191,39 +191,126 @@ public:
 
 
 public:
+    /// @brief MCP2515 constructor
+    /// @param cs The SPI chip select pin
+    /// @param clk The MCP2515 clock frequency (supported frequencies: 8MHz, 12Mhz, 16Mhz, 20Mhz)
+    /// @param spi The SPI object used for communication
     MCP2515(int cs = MCP2515_DEFAULT_CS_PIN, CanClock clk = CanClock::MCP_8MHZ, SPIClass &spi = SPI);
 
+    /// @brief Setup MCP2515 with the selected baud rate
+    /// @param baudRate The baudrate to use
+    /// @return MCP2515Error::OK if successful
     MCP2515Error begin(CanSpeed baudRate);
+
+    /// @brief Setup MCP2515 with a custom set of cnf values
+    /// @param cnf1 The value of the CNF1 register
+    /// @param cnf2 The value of the CNF2 register
+    /// @param cnf3 The value of the CNF3 register
+    /// @return MCP2515Error::OK if successful
     MCP2515Error begin(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
+
+    /// @brief Reset and put MCP2515 in sleep mode
     void end();
 
+    /// @brief Return the current error flags
+    /// @return The current error flags
     ErrorFlags getErrorFlags();
+
+    /// @brief Return the number of transmit errors
+    /// @return The current number of transmit errors
     uint8_t getTxErrorCount();
+
+    /// @brief Return the number of receive errors
+    /// @return The current number of receive errors
     uint8_t getRxErrorCount();
+
+    /// @brief Clear overflow and message error flags
     void clearErrorFlags();
 
+    /// @brief Set the SPI clock frequency
+    /// @param frequency The SPI clock frequency in Hz
     void setSPIFrequency(uint32_t frequency);
+
+    /// @brief Set the CAN baudrate
+    /// @param speed The new CAN baudrate
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setBitrate(CanSpeed speed);
 
+    /// @brief Set the CAN baudrate using a custom set of cnf values
+    /// @param cnf1 The value of the CNF1 register
+    /// @param cnf2 The value of the CNF2 register
+    /// @param cnf3 The value of the CNF3 register
     void setBitrate(uint8_t cnf1, uint8_t cnf2, uint8_t cnf3);
+
+    /// @brief Set the Mask bits for the sepific rx buffer
+    /// See chapter 4.5 of the MCP2515 datasheet for more information on Mask and Filter registers
+    /// @param num The rx buffer to set
+    /// @param extended True if extended CAN IDs are used
+    /// @param mask The value of the CAN ID mask
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setMask(const MASK num, bool extended, uint32_t mask);
+
+    /// @brief Set the CAN ID filter for the specific filter entry
+    /// @param num The filter to set
+    /// @param extended True if extended CAN IDs are used
+    /// @param filter The value of the CA ID filter
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setFilter(const RXF num, bool extended, uint32_t filter);
 
+    /// @brief Get the current CAN mode
+    /// @return The current CAN mode
     CanModes getMode();
+
+    /// @brief Set the MCP2515 into config mode
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setConfigMode();
+
+    /// @brief Set the MCP2515 into listen mode
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setListenMode();
+
+    /// @brief Set the MCP2515 into loopback mode
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setLoopbackMode();
+
+    /// @brief Set the MCP2515 into sleep mode
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setSleepMode();
+
+    /// @brief Set the MCP2515 into normal mode
+    /// @return MCP2515Error::OK if successful
     MCP2515Error setNormalMode();
 
+    /// @brief Enable the wake-up low pass filter
+    /// @param enable True if the low pass filter should be enabled
+    /// @return MCP2515Error::OK if successful
     void setWakeupFilter(bool enable);
+
+    /// @brief Enable one-shot mode for tx 
+    /// @param enable True if one-shot mode should be enabled
+    /// @return MCP2515Error::OK if successful
     void setOneShotMode(bool enable);
+
+    /// @brief Setup the clock output of the MCP2515
+    /// @param divisor The clock divisor
     void setClockOut(const CanClkOut divisor);
+
+    /// @brief Enable or disable the rx buffer rollover from RX0 to RX1
+    /// @param enable True if rollover should be enabled
     void setRxBufferRollover(bool enable);
 
+    /// @brief Check if a new message is available in any of the rx buffers
+    /// @return true if a new message is available
     bool checkMessage();
+
+    /// @brief Read a message from the rx buffer into the given object
+    /// @param packet Reference to the object to store the message
+    /// @return MCP2515Error::OK if successful
     MCP2515Error readMessage(MCP2515CanPaket &packet);
 
+    /// @brief Send a CAN message
+    /// @param packet The message to send
+    /// @return MCP2515Error::OK if successful
     MCP2515Error sendMessage(const CANPacket &packet);
 
 protected:
@@ -240,7 +327,7 @@ protected:
 
     inline MCP2515Error setMode(const internal::CanctrlReqopMode mode);
 
-    MCP2515Error readMessage(internal::RXBn rxbn, CANPacket &packet);
+    MCP2515Error readMessage(internal::RXBn rxbn, MCP2515CanPaket &packet);
     MCP2515Error sendMessage(internal::TXBn txbn, const CANPacket &packet);
 
     static std::array<uint8_t, CANPacket::MAX_DATA_LENGTH + 5> serialize(const CANPacket &packet);
