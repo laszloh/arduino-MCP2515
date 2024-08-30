@@ -259,7 +259,7 @@ void MCP2515::setRxBufferRollover(bool enable) {
     modifyRegister(MCP_RXB0CTRL, RXB_0_CTRL_BUKT, (enable) ? 0xFF : 0x00);
 }
 
-MCP2515Error MCP2515::readMessage(RXBn rxbn, CANPacket &packet) {
+MCP2515Error MCP2515::readMessage(RXBn rxbn, MCP2515CanPaket &packet) {
     const struct RxBnRegs *rxb = &RXB[rxbn];
 
     uint8_t tbufdata[5];
@@ -291,7 +291,7 @@ bool MCP2515::checkMessage() {
     return getStatus() & STAT_RXIF_MASK;
 }
 
-MCP2515Error MCP2515::readMessage(CANPacket &packet) {
+MCP2515Error MCP2515::readMessage(MCP2515CanPaket &packet) {
     MCP2515Error rc;
     uint8_t stat = getStatus();
 

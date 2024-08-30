@@ -19,6 +19,19 @@
 #define MCP2515_DEFAULT_CS_PIN  10
 #define MCP2515_DEFAULT_INT_PIN 2
 
+class MCP2515;
+
+class MCP2515CanPaket : public CANPacket {
+    friend class MCP2515;
+public:
+    MCP2515CanPaket() = default;
+
+    int8_t &getFilterHif() const { return filHit; }
+
+private:
+    int8_t filHit{-1};
+};
+
 /// @brief MCP2515 driver class
 class MCP2515 {
 public:
@@ -209,7 +222,7 @@ public:
     void setRxBufferRollover(bool enable);
 
     bool checkMessage();
-    MCP2515Error readMessage(CANPacket &packet);
+    MCP2515Error readMessage(MCP2515CanPaket &packet);
 
     MCP2515Error sendMessage(const CANPacket &packet);
 
