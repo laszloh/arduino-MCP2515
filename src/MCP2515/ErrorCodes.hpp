@@ -10,18 +10,23 @@
 
 class __FlashStringHelper;
 
+/// @brief MCP2515 and CANPacket Error codes
 class MCP2515Error {
 public:
     enum Code{
-        OK = 0,
-        FAIL,
-        ALLTXBUSY,
-        FAILINIT,
-        FAILTX,
-        NOMSG,
+        OK = 0,     ///< Operation was successful
+        FAIL,       ///< Operation failed
+        ALLTXBUSY,  ///< All TX buffers are busy
+        FAILINIT,   ///< Failed to initialize MCP2515
+        FAILTX,     ///< Failed to transmit message
+        NOMSG,      ///< No messages available
     };
 
+    /// @brief Default constructor
     MCP2515Error() = default;
+
+    /// @brief Constructor with error code
+    /// @param c error code
     MCP2515Error(Code c) : _code(c) {}
 
     // Compare with MCP2515Error
@@ -48,12 +53,16 @@ public:
         return lhs != rhs._code;
     }
 
-    // return true if there is an error
+    /// @brief Returns true if the error code is not OK
+    /// @return true if the error code is not OK
     explicit operator bool() const { return _code != Code::OK; }
 
-    // return internal enum
+    /// @brief Returns the error code
+    /// @return the error code
     Code code() const { return _code; }
 
+    /// @brief Returns the error code as a string
+    /// @return the error code as a string
     const char *c_str() const {
         static constexpr const char *messages[] = {
             "OK", "FAIL", "ALLTXBUSY", "FAILINIT", "FAILTX",
@@ -65,6 +74,8 @@ public:
         return messages[c];
     }
 
+    /// @brief Returns the error code as a flash string
+    /// @return the error code as a flash string
     const __FlashStringHelper* f_str() const {
         static const char s0[] PROGMEM = "OK";
         static const char s1[] PROGMEM = "FAIL";
@@ -81,5 +92,5 @@ public:
     }
 
 protected:
-    const Code _code{Code::OK};
+    Code _code{Code::OK};
 };
